@@ -37,3 +37,7 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+*.bigWig
+ATAC-Seq-MFunk/ATAC-Seq-MFunk.Rproj
+ATAC-Seq-exvivo/raw_data/Aging_Organoids_ATAC_seq_results alias
+ATAC-Seq-exvivo/orthogonal_data/LOLACore/*

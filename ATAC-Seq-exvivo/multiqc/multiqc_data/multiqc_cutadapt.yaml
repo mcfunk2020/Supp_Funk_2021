@@ -1,0 +1,384 @@
+A_R1_T1_1:
+  bp_processed: 1481114144
+  bp_written: 1182167688
+  percent_trimmed: 20.183890432147543
+  quality_trimmed: 12917678
+  r_processed: 19488344
+  r_with_adapters: 14537773
+  r_written: 19488344
+A_R1_T1_2:
+  bp_processed: 1481114144
+  bp_written: 1187357369
+  percent_trimmed: 19.833500084379722
+  quality_trimmed: 15110059
+  r_processed: 19488344
+  r_with_adapters: 14333317
+  r_written: 19488344
+A_R1_T2_1:
+  bp_processed: 1494097908
+  bp_written: 1200431147
+  percent_trimmed: 19.65512162406428
+  quality_trimmed: 9904000
+  r_processed: 19659183
+  r_with_adapters: 14634245
+  r_written: 19659183
+A_R1_T2_2:
+  bp_processed: 1494097908
+  bp_written: 1205335935
+  percent_trimmed: 19.326844074531692
+  quality_trimmed: 11481716
+  r_processed: 19659183
+  r_with_adapters: 14464768
+  r_written: 19659183
+A_R1_T3_1:
+  bp_processed: 1503411936
+  bp_written: 1206639492
+  percent_trimmed: 19.73992868445605
+  quality_trimmed: 9739023
+  r_processed: 19781736
+  r_with_adapters: 14736451
+  r_written: 19781736
+A_R1_T3_2:
+  bp_processed: 1503411936
+  bp_written: 1210382407
+  percent_trimmed: 19.490967311303827
+  quality_trimmed: 10957962
+  r_processed: 19781736
+  r_with_adapters: 14615281
+  r_written: 19781736
+A_R1_T4_1:
+  bp_processed: 1459623548
+  bp_written: 1176008600
+  percent_trimmed: 19.43069145387616
+  quality_trimmed: 8880022
+  r_processed: 19205573
+  r_with_adapters: 14264914
+  r_written: 19205573
+A_R1_T4_2:
+  bp_processed: 1459623548
+  bp_written: 1180349541
+  percent_trimmed: 19.133290044728714
+  quality_trimmed: 10549918
+  r_processed: 19205573
+  r_with_adapters: 14111356
+  r_written: 19205573
+A_R2_T1_1:
+  bp_processed: 1194426716
+  bp_written: 947494044
+  percent_trimmed: 20.673739852952185
+  quality_trimmed: 12302866
+  r_processed: 15716141
+  r_with_adapters: 11774264
+  r_written: 15716141
+A_R2_T1_2:
+  bp_processed: 1194426716
+  bp_written: 953399081
+  percent_trimmed: 20.17935732442207
+  quality_trimmed: 14236030
+  r_processed: 15716141
+  r_with_adapters: 11607262
+  r_written: 15716141
+A_R2_T2_1:
+  bp_processed: 1187986400
+  bp_written: 948794712
+  percent_trimmed: 20.134210964031237
+  quality_trimmed: 9351944
+  r_processed: 15631400
+  r_with_adapters: 11688343
+  r_written: 15631400
+A_R2_T2_2:
+  bp_processed: 1187986400
+  bp_written: 954609078
+  percent_trimmed: 19.644780613650124
+  quality_trimmed: 10484306
+  r_processed: 15631400
+  r_with_adapters: 11537678
+  r_written: 15631400
+A_R2_T3_1:
+  bp_processed: 1180058460
+  bp_written: 941962234
+  percent_trimmed: 20.17664667223351
+  quality_trimmed: 9034579
+  r_processed: 15527085
+  r_with_adapters: 11608556
+  r_written: 15527085
+A_R2_T3_2:
+  bp_processed: 1180058460
+  bp_written: 946386008
+  percent_trimmed: 19.80176914286094
+  quality_trimmed: 9794350
+  r_processed: 15527085
+  r_with_adapters: 11501720
+  r_written: 15527085
+A_R2_T4_1:
+  bp_processed: 1172410276
+  bp_written: 934818672
+  percent_trimmed: 20.26522701682632
+  quality_trimmed: 8476477
+  r_processed: 15426451
+  r_with_adapters: 11586158
+  r_written: 15426451
+A_R2_T4_2:
+  bp_processed: 1172410276
+  bp_written: 940303272
+  percent_trimmed: 19.797421495817733
+  quality_trimmed: 9689322
+  r_processed: 15426451
+  r_with_adapters: 11435799
+  r_written: 15426451
+A_R3_T1_1:
+  bp_processed: 1352581576
+  bp_written: 1096129302
+  percent_trimmed: 18.960207543149323
+  quality_trimmed: 12196137
+  r_processed: 17797126
+  r_with_adapters: 12971220
+  r_written: 17797126
+A_R3_T1_2:
+  bp_processed: 1352581576
+  bp_written: 1100133971
+  percent_trimmed: 18.664131574715462
+  quality_trimmed: 14588608
+  r_processed: 17797126
+  r_with_adapters: 12859120
+  r_written: 17797126
+A_R3_T2_1:
+  bp_processed: 1376659440
+  bp_written: 1121739382
+  percent_trimmed: 18.517292700945703
+  quality_trimmed: 9373091
+  r_processed: 18113940
+  r_with_adapters: 13202512
+  r_written: 18113940
+A_R3_T2_2:
+  bp_processed: 1376659440
+  bp_written: 1125885760
+  percent_trimmed: 18.21610143464385
+  quality_trimmed: 11152604
+  r_processed: 18113940
+  r_with_adapters: 13096523
+  r_written: 18113940
+A_R3_T3_1:
+  bp_processed: 1384024828
+  bp_written: 1127734460
+  percent_trimmed: 18.517757977676975
+  quality_trimmed: 9099454
+  r_processed: 18210853
+  r_with_adapters: 13262312
+  r_written: 18210853
+A_R3_T3_2:
+  bp_processed: 1384024828
+  bp_written: 1130762312
+  percent_trimmed: 18.29898646876008
+  quality_trimmed: 10523051
+  r_processed: 18210853
+  r_with_adapters: 13204838
+  r_written: 18210853
+A_R3_T4_1:
+  bp_processed: 1344847968
+  bp_written: 1098037315
+  percent_trimmed: 18.352308876002258
+  quality_trimmed: 8354882
+  r_processed: 17695368
+  r_with_adapters: 12879310
+  r_written: 17695368
+A_R3_T4_2:
+  bp_processed: 1344847968
+  bp_written: 1101838464
+  percent_trimmed: 18.06966361866117
+  quality_trimmed: 10183568
+  r_processed: 17695368
+  r_with_adapters: 12780477
+  r_written: 17695368
+Y_R1_T1_1:
+  bp_processed: 399095456
+  bp_written: 343066967
+  percent_trimmed: 14.038869187225222
+  quality_trimmed: 3595113
+  r_processed: 5251256
+  r_with_adapters: 3432526
+  r_written: 5251256
+Y_R1_T1_2:
+  bp_processed: 399095456
+  bp_written: 341892428
+  percent_trimmed: 14.333169456081205
+  quality_trimmed: 2974929
+  r_processed: 5251256
+  r_with_adapters: 3521188
+  r_written: 5251256
+Y_R1_T2_1:
+  bp_processed: 379325500
+  bp_written: 329914823
+  percent_trimmed: 13.025930763948113
+  quality_trimmed: 2854578
+  r_processed: 4991125
+  r_with_adapters: 3200351
+  r_written: 4991125
+Y_R1_T2_2:
+  bp_processed: 379325500
+  bp_written: 328779954
+  percent_trimmed: 13.325111546679565
+  quality_trimmed: 2144214
+  r_processed: 4991125
+  r_with_adapters: 3290574
+  r_written: 4991125
+Y_R1_T3_1:
+  bp_processed: 490105836
+  bp_written: 423192973
+  percent_trimmed: 13.652737446693045
+  quality_trimmed: 3429927
+  r_processed: 6448761
+  r_with_adapters: 4212352
+  r_written: 6448761
+Y_R1_T3_2:
+  bp_processed: 490105836
+  bp_written: 422052210
+  percent_trimmed: 13.885495948266978
+  quality_trimmed: 2754303
+  r_processed: 6448761
+  r_with_adapters: 4306811
+  r_written: 6448761
+Y_R1_T4_1:
+  bp_processed: 358319936
+  bp_written: 312160272
+  percent_trimmed: 12.882248337976932
+  quality_trimmed: 2545808
+  r_processed: 4714736
+  r_with_adapters: 3013181
+  r_written: 4714736
+Y_R1_T4_2:
+  bp_processed: 358319936
+  bp_written: 311161400
+  percent_trimmed: 13.161013737175931
+  quality_trimmed: 1910671
+  r_processed: 4714736
+  r_with_adapters: 3097721
+  r_written: 4714736
+Y_R2_T1_1:
+  bp_processed: 1505663816
+  bp_written: 1183921024
+  percent_trimmed: 21.368833373093427
+  quality_trimmed: 12833228
+  r_processed: 19811366
+  r_with_adapters: 15081427
+  r_written: 19811366
+Y_R2_T1_2:
+  bp_processed: 1505663816
+  bp_written: 1189276521
+  percent_trimmed: 21.01314328191307
+  quality_trimmed: 15075339
+  r_processed: 19811366
+  r_with_adapters: 14912389
+  r_written: 19811366
+Y_R2_T2_1:
+  bp_processed: 1541634084
+  bp_written: 1218434984
+  percent_trimmed: 20.96470902883852
+  quality_trimmed: 10140315
+  r_processed: 20284659
+  r_with_adapters: 15444953
+  r_written: 20284659
+Y_R2_T2_2:
+  bp_processed: 1541634084
+  bp_written: 1223700895
+  percent_trimmed: 20.62312920424507
+  quality_trimmed: 11925743
+  r_processed: 20284659
+  r_with_adapters: 15290964
+  r_written: 20284659
+Y_R2_T3_1:
+  bp_processed: 1543729100
+  bp_written: 1220293328
+  percent_trimmed: 20.95158872110398
+  quality_trimmed: 9894535
+  r_processed: 20312225
+  r_with_adapters: 15457095
+  r_written: 20312225
+Y_R2_T3_2:
+  bp_processed: 1543729100
+  bp_written: 1224413187
+  percent_trimmed: 20.684711650509147
+  quality_trimmed: 11394904
+  r_processed: 20312225
+  r_with_adapters: 15342945
+  r_written: 20312225
+Y_R2_T4_1:
+  bp_processed: 1516878680
+  bp_written: 1200727444
+  percent_trimmed: 20.842222925830825
+  quality_trimmed: 9172530
+  r_processed: 19958930
+  r_with_adapters: 15195793
+  r_written: 19958930
+Y_R2_T4_2:
+  bp_processed: 1516878680
+  bp_written: 1205610324
+  percent_trimmed: 20.52031979248334
+  quality_trimmed: 11112116
+  r_processed: 19958930
+  r_with_adapters: 15045898
+  r_written: 19958930
+Y_R3_T1_1:
+  bp_processed: 939914648
+  bp_written: 783639769
+  percent_trimmed: 16.626496813570245
+  quality_trimmed: 8517814
+  r_processed: 12367298
+  r_with_adapters: 8600384
+  r_written: 12367298
+Y_R3_T1_2:
+  bp_processed: 939914648
+  bp_written: 785548822
+  percent_trimmed: 16.423387626575217
+  quality_trimmed: 9603777
+  r_processed: 12367298
+  r_with_adapters: 8595828
+  r_written: 12367298
+Y_R3_T2_1:
+  bp_processed: 947942908
+  bp_written: 798917715
+  percent_trimmed: 15.720903837385954
+  quality_trimmed: 6508601
+  r_processed: 12472933
+  r_with_adapters: 8595243
+  r_written: 12472933
+Y_R3_T2_2:
+  bp_processed: 947942908
+  bp_written: 800738344
+  percent_trimmed: 15.528842798199404
+  quality_trimmed: 7258430
+  r_processed: 12472933
+  r_with_adapters: 8593563
+  r_written: 12472933
+Y_R3_T3_1:
+  bp_processed: 960477436
+  bp_written: 808808977
+  percent_trimmed: 15.790944515223366
+  quality_trimmed: 6456171
+  r_processed: 12637861
+  r_with_adapters: 8708421
+  r_written: 12637861
+Y_R3_T3_2:
+  bp_processed: 960477436
+  bp_written: 810165194
+  percent_trimmed: 15.649742135118727
+  quality_trimmed: 7028283
+  r_processed: 12637861
+  r_with_adapters: 8724477
+  r_written: 12637861
+Y_R3_T4_1:
+  bp_processed: 915756984
+  bp_written: 774583859
+  percent_trimmed: 15.416003095423841
+  quality_trimmed: 5753123
+  r_processed: 12049434
+  r_with_adapters: 8264134
+  r_written: 12049434
+Y_R3_T4_2:
+  bp_processed: 915756984
+  bp_written: 776180336
+  percent_trimmed: 15.241668962253854
+  quality_trimmed: 6593669
+  r_processed: 12049434
+  r_with_adapters: 8258383
+  r_written: 12049434
