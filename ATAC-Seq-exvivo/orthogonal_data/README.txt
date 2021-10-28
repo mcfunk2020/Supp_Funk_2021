@@ -19,6 +19,9 @@ Transcription factor binding peaks overlapping with ATAC seq peaks as analysezed
 
 Nathan C Sheffield, Christoph Bock, LOLA: enrichment analysis for genomic region sets and regulatory elements in R and Bioconductor, Bioinformatics. 2016 Feb 15;32(4):587-9. doi: 10.1093/bioinformatics/btv612. Epub 2015 Oct 27. 
 
+
+Data were lifted over from mm9 to mm10 using https://genome.ucsc.edu/cgi-bin/hgLiftOver on the 27.10.2021
+
 GSM881112_Rela_120_peaks_sorted_lifted_mm10.bed
 GSM940926_PU.1_LPS_4h_vs_input_bw100_peaks_Spi_lifted_mm10.bed
 GSM1022305_IL4_K_STAT6_IL4_4h_input_peaks_lifted_mm10.bed

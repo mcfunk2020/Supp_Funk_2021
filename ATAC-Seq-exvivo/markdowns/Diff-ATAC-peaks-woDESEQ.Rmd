@@ -553,6 +553,8 @@ Y1_ranges <- import.bw("raw_data/Y_R1.mLb.clN.bigWig", as="GRanges")
 Y2_ranges <- import.bw("raw_data/Y_R2.mLb.clN.bigWig", as="GRanges") 
 Y3_ranges <- import.bw("raw_data/Y_R3.mLb.clN.bigWig", as="GRanges") 
 
+Rela_ranges <- import("orthogonal_data/GSM881112_Rela_120_peaks_sorted_lifted_mm10.bed") 
+STAT1_ranges <- import("orthogonal_data/GSM1022317_IFNg_K_STAT1_IFNg_2h_input_peaks_lifted_mm10.bed") 
 ```
 
 ```{r}
