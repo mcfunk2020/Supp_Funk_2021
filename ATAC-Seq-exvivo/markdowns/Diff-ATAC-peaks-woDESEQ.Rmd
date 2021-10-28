@@ -23,6 +23,7 @@ library(BSgenome.Mmusculus.UCSC.mm10)
 library(TxDb.Mmusculus.UCSC.mm10.knownGene)
 library(org.Mm.eg.db)
 library(tidyverse)
+library(cowplot)
 ## B110 Theme
 
 theme_b110<-function(){
@@ -110,18 +111,13 @@ design_table <- design_table  %>% column_to_rownames("sample_names")
 
 ```
 
-# DESeq objeect creation
+# count table objeect creation
 
 ```{r deseq_object}
 count_data <- raw_peaks %>% 
   column_to_rownames("PeakID") %>% 
   filter(Length>200) %>% 
   select(ends_with("bam"))
-
-#raw_peaks %>%
-
-
-deseq_object <- DESeqDataSetFromMatrix(countData = count_data,colData = design_table,design = ~Age)
 
 ```
 
@@ -130,10 +126,9 @@ deseq_object <- DESeqDataSetFromMatrix(countData = count_data,colData = design_t
 Becasue of: 
 Gontarz, P., Fu, S., Xing, X. et al. Comparison of differential accessibility analysis strategies for ATAC-seq data. Sci Rep 10, 10150 (2020). https://doi.org/10.1038/s41598-020-66998-4
 
-I believe it is more wise to use edgeR on this particular dataset.
+We are rather using edgeR on this particular data set.
 
 ```{r}
-
 
 edgeR_object <- DGEList(counts=count_data,group = factor(c("A","Y","A","Y","A","Y"))) %>% 
   calcNormFactors() %>%
@@ -178,21 +173,13 @@ write_delim(x = res_edgeR,delim = ",",file = "results/annotated_differential_pea
 #simple prefiltering
 
 ```{r pre_filter,warning=F,message=F}
-
-#counting transcripts
-
-nrow(deseq_object)
+deseq_object <- DESeqDataSetFromMatrix(countData = count_data,colData = design_table,design = ~Age)
 
 #excluding genes that were not matched at all
 deseq_object <- deseq_object[ rowSums(counts(deseq_object)) > 10, ]
 
-nrow(deseq_object)
-
-#remaining 156703
-
 
 #stabilize variance for low readcount genes
-
 
 vsd <- vst(deseq_object, blind = FALSE)
 
@@ -200,36 +187,14 @@ vsd <- vst(deseq_object, blind = FALSE)
 
 #Treatments should cluster together
 
+a <- plotPCA(vsd, intgroup = c("Age")) + 
+  theme_cowplot()+
+  scale_color_manual(values = c(maja_aged,maja_young))
 
-sampleDists <- dist(t(assay(vsd)))
-sampleDistMatrix <- as.matrix( sampleDists )
-rownames(sampleDistMatrix) <- rownames(design_table)
-colnames(sampleDistMatrix) <- NULL
-colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
-annotations = data.frame("Age"=vsd$Age,"Replicate"=vsd$Replicate,"line"=vsd$line)
-row.names(annotations)<- rownames(design_table)
+print(a)
 
-c<- as.ggplot(pheatmap(sampleDistMatrix,
-         clustering_distance_rows = sampleDists,
-         clustering_distance_cols = sampleDists,
-         col = colors,annotation_row = annotations)) 
-
-# --> nice it clusters the gene expression profile by age
-
-a <- plotPCA(vsd, intgroup = c("Age")) + theme_classic()+
-  scale_color_manual(values = c("#3B3B3BCC","#EFC000CC"))
-
-ggsave("graphics/PCA_clustering_qc.pdf",a,width=7,height=5,unit="cm")
-
-b <- plotPCA(vsd, intgroup = c("Replicate","line")) + theme_b110()
-
-(a+b)/c
-
-  # --> also PCA shows that the first driving force to discriminate the samples is the Age of the mice
-
-ggsave("graphics/PCA_clustering_qc.pdf",(a+b)/c,width=20,height=20,unit="cm")
+ggsave("graphics/PCA_clustering_qc.pdf",a,width=10,height=7,unit="cm")
 ```
-
 
 # Volcano of results
 
@@ -238,42 +203,41 @@ volcano_data <- res_edgeR %>%
   mutate(signif=if_else(padj<=0.1,if_else(log2FoldChange>0,"up","down"),"none")) %>%
   filter(padj<0.5)
 
-volcano_data %>%
-  ggplot(aes(x=log2FoldChange,y=-log10(PValue),col=signif,label=SYMBOL)) +
-    geom_point()+
-    ggtitle("Getting more or less accessible with age")  +
-    scale_color_manual(values = c(google_blue,b110_grey_light,google_red)) +
-    theme_b110() +
-    ggrepel::geom_label_repel(data = volcano_data %>% 
-                                arrange(padj) %>% 
-                                slice_head(n = 30))
-
-ggsave("graphics/Volcano_differentially_open_chromatin_edgeR.pdf",width = 24,height = 15,units = "cm")
-
-volcano_data <- res_edgeR %>%
-  filter(padj<0.5) %>% 
- # filter(grepl("protein",Detailed_Annotation))  %>%
-  #group_by(Gene_Name) %>%
-  #summarise(padj = mean(padj), log2FoldChange = mean(log2FoldChange),PValue=median(PValue) ) %>%
-  mutate(signif=if_else(padj<=0.1,if_else(log2FoldChange>0,"up","down"),"none"))
-
-library(cowplot)
-maja_red = alpha('#E64B35CC',0.8)
-maja_blue = alpha('#4DBBD5CC',0.8)
 p1 <- volcano_data %>%
   ggplot(aes(x=log2FoldChange,y=-log10(PValue),col=signif,label=SYMBOL)) +
     geom_point()+
     ggtitle("Getting more or less accessible with age")  +
+   scale_color_manual(values = c(maja_blue,b110_grey_light,maja_red)) +
+    theme_cowplot() +
+    ggrepel::geom_label_repel(data = volcano_data %>% 
+                                arrange(padj) %>% 
+                                slice_head(n = 30),col="black") +
+    geom_vline(xintercept = c(-.5,.5),lwd=0.5,lty=2)
+
+ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_all.pdf",p1,width = 24,height = 15,units = "cm")
+
+volcano_data <- res_edgeR %>%
+  filter(padj<0.5) %>% 
+  mutate(signif=if_else(padj<=0.1,if_else(log2FoldChange>0,"up","down"),"none"))
+
+p2 <- volcano_data %>%
+  ggplot(aes(x=log2FoldChange,y=-log10(PValue),col=signif,label=SYMBOL)) +
+    geom_point()+
     scale_color_manual(values = c(maja_blue,b110_grey_light,maja_red)) +
     theme_cowplot() +
     ggrepel::geom_label_repel(data = volcano_data %>% 
-                                filter(SYMBOL %in% c("Ly6e","Ccr2","Ifit3","Tnf","Isg15","Oas3","Itgam","Irgm2","Oas2","Gpc2","Gpc3","Ciita")),min.segment.length = 0,col="black",size=2) 
+                                filter(SYMBOL %in% c("Ly6e","Ccr2","Oasl2","Ciita","Dhx58")),min.segment.length = 0,col="black",max.overlaps = 100,size=3) +
+    geom_vline(xintercept = c(-.5,.5),lwd=0.5,lty=2) +
+    ylim(0,60) +
+    xlim(-4.5,4) +
+    theme(legend.position = "none")
 
-ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_protein_mean.pdf",p1,width = 13,height = 7,units = "cm")
+print(p2)
+
+ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_focussed_GOI.pdf",p2,width = 8,height = 8,units = "cm")
 
 
 ```
-
 
 # Example differential peak counts
 
@@ -282,53 +246,69 @@ ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_protein_mean.pdf",p
 topGene <- res_edgeR %>% filter(SYMBOL=="Ccr2") %>% slice_min(padj) %>% pull(PeakID) 
 geneCounts <- plotCounts(deseq_object, gene = topGene, intgroup = c("Age"),returnData = TRUE) %>% mutate(Age=factor(Age,levels = c("Y","A")))
 a <- ggplot(geneCounts, aes(x = Age, y = count)) +
-  scale_y_log10() +  
-  #geom_bar(aes(fill=Age),position = "dodge", stat = "summary", fun = "mean") +
   geom_boxplot(aes(fill=Age)) + 
   geom_point(size = 3) + 
   ggtitle(res_edgeR %>% filter(PeakID==topGene) %>% slice_min(padj) %>% unite(SYMBOL,SYMBOL,padj,sep="_") %>% pull(SYMBOL) %>% unique()) +
-  theme_b110() +
-  scale_fill_manual(values = c("#EFC000CC","#3B3B3BCC"))
+  theme_cowplot() +
+  scale_fill_manual(values = c(maja_young,maja_aged))+
+    theme(legend.position = "none")
 
 topGene <- res_edgeR %>% filter(SYMBOL=="Ly6e") %>% slice_min(padj) %>% pull(PeakID) 
 geneCounts <- plotCounts(deseq_object, gene = topGene, intgroup = c("Age"),returnData = TRUE) %>% mutate(Age=factor(Age,levels = c("Y","A")))
 b <- ggplot(geneCounts, aes(x = Age, y = count)) +
-  scale_y_log10() +  
-  #geom_bar(aes(fill=Age),position = "dodge", stat = "summary", fun = "mean") +
   geom_boxplot(aes(fill=Age)) + 
   geom_point(size = 3) + 
   ggtitle(res_edgeR %>% filter(PeakID==topGene) %>% slice_min(padj) %>% unite(SYMBOL,SYMBOL,padj,sep="_") %>% pull(SYMBOL) %>% unique()) +
-  theme_b110() +
-  scale_fill_manual(values = c("#EFC000CC","#3B3B3BCC"))
+  theme_cowplot() +
+  scale_fill_manual(values = c(maja_young,maja_aged))+
+    theme(legend.position = "none")
 
 
 topGene <- res_edgeR %>% filter(SYMBOL=="Ciita") %>% slice_min(padj) %>% pull(PeakID) 
 geneCounts <- plotCounts(deseq_object, gene = topGene, intgroup = c("Age"),returnData = TRUE) %>% mutate(Age=factor(Age,levels = c("Y","A")))
 c <- ggplot(geneCounts, aes(x = Age, y = count)) +
-  scale_y_log10() +  
-  #geom_bar(aes(fill=Age),position = "dodge", stat = "summary", fun = "mean") +
   geom_boxplot(aes(fill=Age)) + 
   geom_point(size = 3) + 
   ggtitle(res_edgeR %>% filter(PeakID==topGene) %>% slice_min(padj) %>% unite(SYMBOL,SYMBOL,padj,sep="_") %>% pull(SYMBOL) %>% unique()) +
-  theme_b110() +
-  scale_fill_manual(values = c("#EFC000CC","#3B3B3BCC"))
+  theme_cowplot() +
+  scale_fill_manual(values = c(maja_young,maja_aged))+
+    theme(legend.position = "none")
+
+topGene <- res_edgeR %>% filter(SYMBOL=="Dhx58") %>% slice_min(padj) %>% pull(PeakID) 
+geneCounts <- plotCounts(deseq_object, gene = topGene, intgroup = c("Age"),returnData = TRUE) %>% mutate(Age=factor(Age,levels = c("Y","A")))
+d <- ggplot(geneCounts, aes(x = Age, y = count)) +
+  geom_boxplot(aes(fill=Age)) + 
+  geom_point(size = 3) + 
+  ggtitle(res_edgeR %>% filter(PeakID==topGene) %>% slice_min(padj) %>% unite(SYMBOL,SYMBOL,padj,sep="_") %>% pull(SYMBOL) %>% unique()) +
+  theme_cowplot() +
+  scale_fill_manual(values = c(maja_young,maja_aged))+
+    theme(legend.position = "none")
+
+topGene <- res_edgeR %>% filter(SYMBOL=="Oasl2") %>% slice_min(padj) %>% pull(PeakID) 
+geneCounts <- plotCounts(deseq_object, gene = topGene, intgroup = c("Age"),returnData = TRUE) %>% mutate(Age=factor(Age,levels = c("Y","A")))
+e <- ggplot(geneCounts, aes(x = Age, y = count)) +
+  geom_boxplot(aes(fill=Age)) + 
+  geom_point(size = 3) + 
+  ggtitle(res_edgeR %>% filter(PeakID==topGene) %>% slice_min(padj) %>% unite(SYMBOL,SYMBOL,padj,sep="_") %>% pull(SYMBOL) %>% unique()) +
+  theme_cowplot() +
+  scale_fill_manual(values = c(maja_young,maja_aged))+
+    theme(legend.position = "none")
 
 topGene <- res_edgeR %>% filter(SYMBOL=="H2-Aa") %>% slice_min(padj) %>% pull(PeakID) 
 geneCounts <- plotCounts(deseq_object, gene = topGene, intgroup = c("Age"),returnData = TRUE) %>% mutate(Age=factor(Age,levels = c("Y","A")))
-d <- ggplot(geneCounts, aes(x = Age, y = count)) +
-  scale_y_log10() +  
-  #geom_bar(aes(fill=Age),position = "dodge", stat = "summary", fun = "mean") +
+f <- ggplot(geneCounts, aes(x = Age, y = count)) +
   geom_boxplot(aes(fill=Age)) + 
   geom_point(size = 3) + 
   ggtitle(res_edgeR %>% filter(PeakID==topGene) %>% slice_min(padj) %>% unite(SYMBOL,SYMBOL,padj,sep="_") %>% pull(SYMBOL) %>% unique()) +
-  theme_b110() +
-  scale_fill_manual(values = c("#EFC000CC","#3B3B3BCC"))
+  theme_cowplot() +
+  scale_fill_manual(values = c(maja_young,maja_aged))+
+    theme(legend.position = "none")
 
-e <- (a+b)/(c+d)
+g <- (a+b)/(c+d)/(e+f)
 
-print(e)
+print(g)
 
-ggsave("graphics/Example_differentially_accessible_genes.pdf",e,width = 24,height = 15,units = "cm")
+ggsave("graphics/Example_differentially_accessible_genes.pdf",g,width =15 ,height = 24,units = "cm")
 
 ```
 
@@ -343,7 +323,6 @@ library(msigdbr)
 
 # first we get the gene sets from msig db
 msig_db_hallmarks<- msigdbr(species = "Mus musculus", category = "H", subcategory = NULL) %>% split(x = .$gene_symbol, f = .$gs_name)
-msig_db_immune_terms<- msigdbr(species = "Mus musculus", category = "C7", subcategory = "IMMUNESIGDB") %>% split(x = .$gene_symbol, f = .$gs_name)
 msig_db_go_terms<- msigdbr(species = "Mus musculus", category = "C5", subcategory = "GO:BP") %>% split(x = .$gene_symbol, f = .$gs_name)
 msig_db_reactome<- msigdbr(species = "Mus musculus", category = "C2", subcategory = "CP:REACTOME") %>% split(x = .$gene_symbol, f = .$gs_name)
 
@@ -369,62 +348,27 @@ names(seq_results) <-  res_edgeR %>%
   distinct() %>% 
   pull(Symbol)
 
+
 fgsea_GO <- fgsea(pathways=msig_db_go_terms, stats=seq_results)
  fgsea_GOdy <- fgsea_GO %>%
   as_tibble() %>%
   arrange(padj)
 
-fgsea_GOdy %>% 
-  arrange(padj) %>%
-  head(.,30) %>%
-  ggplot(aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill=padj<0.1)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="GO:BioProcess NES from GSEA") + 
-  theme_b110()+
-  scale_fill_manual(values = c(b110_grey,google_blue))
-
-ggsave("graphics/GSEA_GO_BioProcess_edgeR.pdf",width = 24,height = 15,units = "cm")
-
-fgsea_hallmark <- fgsea(pathways=msig_db_hallmarks, stats=seq_results)
-
-fgsea_hallmarktdy <- fgsea_hallmark %>%
-  as_tibble() %>%
-  arrange(padj)
-
-p1 <- fgsea_hallmarktdy %>% 
-  arrange(padj) %>%
+p1 <- fgsea_GOdy %>% 
+ arrange(padj) %>%
   filter(padj<0.2) %>%
+  head(n=30) %>%
   ggplot(aes( x = NES,y=reorder(pathway, NES),col=padj,size=size)) +
   geom_vline(xintercept = 0,lty=1,lwd=0.1,col=b110_grey_light,alpha=0.6)+
   geom_point() +
-   geom_hline(yintercept = 1:14,lty=1,lwd=0.1,col=b110_grey_light,alpha=0.6)+
+   geom_hline(yintercept = 1:30,lty=1,lwd=0.1,col=b110_grey_light,alpha=0.6)+
   labs(y="Pathway", x="Normalized Enrichment Score",
-       title="Hallmarks NES from GSEA") + 
+       title="GO:BP NES from GSEA") + 
   geom_point() +
   theme_cowplot() +
   scale_color_viridis_c() 
 
-ggsave("graphics/GSEA_Hallmarks_edgeR_infigure.pdf",p1,width = 18,height = 15,units = "cm")
-
-fgsea_immu <- fgsea(pathways=msig_db_immune_terms, stats=seq_results)
- fgsea_immudy <- fgsea_immu %>%
-  as_tibble() %>%
-  arrange(padj)
-
-fgsea_immudy %>% 
-  arrange(padj) %>%
-  head(.,30) %>%
-  ggplot(aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill=padj<0.05)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="ImmuneSignatures NES from GSEA") + 
-  theme_b110()+
-  scale_fill_manual(values = c(b110_grey,google_blue))
-
-ggsave("graphics/GSEA_ImmuneSignatures_edgeR.pdf",width = 24,height = 15,units = "cm")
+ggsave("graphics/GSEA_GO_BioProcess_edgeR.pdf",p1,width = 24,height = 15,units = "cm")
 
 fgsea_reactome<- fgsea(pathways=msig_db_reactome, stats=seq_results)
  fgsea_reactomedy <- fgsea_reactome %>%
@@ -433,119 +377,20 @@ fgsea_reactome<- fgsea(pathways=msig_db_reactome, stats=seq_results)
 
 fgsea_reactomedy %>% 
   arrange(padj) %>%
-  head(.,30) %>%
-  ggplot(aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill=padj<0.35)) +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score",
-       title="Reactome Pathways NES from GSEA") + 
-  theme_b110()+
-  scale_fill_manual(values = c(b110_grey,google_blue))
+  filter(padj<0.4) %>%
+  head(n=30) %>%
+  ggplot(aes( x = NES,y=reorder(pathway, NES),col=padj,size=size)) +
+  geom_vline(xintercept = 0,lty=1,lwd=0.1,col=b110_grey_light,alpha=0.6)+
+  geom_point() +
+   geom_hline(yintercept = 1:30,lty=1,lwd=0.1,col=b110_grey_light,alpha=0.6)+
+  labs(y="Pathway", x="Normalized Enrichment Score",
+       title="Reactome NES from GSEA") + 
+  geom_point() +
+  theme_cowplot() +
+  scale_color_viridis_c() 
+
 
 ggsave("graphics/GSEA_Reactome_Pathways_edgeR.pdf",width = 24,height = 15,units = "cm")
-
-
-```
-
-# lets show some barcode plot as an example
-
-### GSEA analysis
-
-We perform gene set enrichment analysis using the Broad Institute's [GSEA](http://software.broadinstitute.org/gsea/index.jsp) [@pmid17644558]. An R version of the algorithm is implemented in the `fgsea` algorithm [@Sergushichev060012], which we use for analysis.
-
-We want to visualize the results as a barcode plot. `fgsea` already implements a nice barcode plot, which we cusotomize a bit to adapt it according to our expectations.
-
-Code for the abrcode plot was inspired by [@pmid31097693] . c Benedikt Rauscher
-
-```{r, results='hide', warning=F, message=F}
-custom_barcode_plot <- function(df, sig){
-  ## named vector of gene-level stats
-  stat_vector <- setNames(df$stat, df$SYMBOL)
-  ## genes in signature
-  sig_genes <- msig_db_hallmarks[[sig]]
-  
-  ## generate barcode plot
-  bc_plot <- plotEnrichment(sig_genes, stat_vector)
-  
-  ## remove unwanted layers
-  bc_plot$layers <- list()
-  
-  ## add barcode at the bottom
-  lowest_pos <- min(bc_plot$data[,2])
-  dash_length <- abs(reduce(range(bc_plot$data[,2]), `-`)*0.1)
-  middle <- which.min(abs(sort(df$stat, decreasing=T)))
-  
-  bc_plot_custom <- bc_plot + geom_segment(aes(x=x, xend=x), y=lowest_pos,
-                           yend=lowest_pos-dash_length) + 
-    geom_line(colour='#4daf4a') + 
-    geom_hline(yintercept=lowest_pos, colour='#cccccc') + 
-    geom_hline(yintercept=0, colour='#cccccc') + xlab('') +
-    theme_classic() +
-    geom_tile(data=tibble(rank=1:length(stat_vector), 
-                          y=lowest_pos-(1.25*dash_length)), 
-              aes(x=rank, y=y, fill=rank),
-                  width=1,
-                  height=0.5*dash_length) +
-    scale_fill_gradient2(low ='#b2182b', high='#2166ac', 
-                         mid='#f7f7f7', midpoint = middle) + 
-    scale_x_continuous(expand = c(0, 0)) +
-    scale_y_continuous(expand = c(0, 0)) +
-    theme(panel.grid=element_blank(), 
-          axis.text.x=element_blank(),
-          axis.ticks.x = element_blank(),
-          legend.position = 'none') + 
-    ggtitle(paste(sig, 'signature')) +
-    ylab('Enrichment score')
-  
-  return(bc_plot_custom)
-}
-```
-
-barcode plots
-
-```{r}
-
-seq_results <- res_edgeR %>%
-  select(stat=stat,SYMBOL) %>%
-  na.omit() %>% 
-  distinct() %>% 
-  group_by(SYMBOL) %>% 
-  summarize(stat=mean(stat)) %>%
-  ungroup()
-
-down_fgsea <- fgsea_hallmark %>% arrange(NES)
-
-## generate plots
-bc_plots_down <- map(1:4, function(j){#nrow()
-  bcp <- custom_barcode_plot(seq_results, down_fgsea$pathway[j]) + 
-    annotate('text', x=Inf , y=Inf, hjust=1, vjust=1, 
-             label=paste('NES =', round(down_fgsea$NES[j], 2), 
-                         '\nFDR =', round(down_fgsea$padj[j], 3)))
-  
-  return(bcp)
-})
-
-up_fgsea <- fgsea_hallmark %>% arrange(-NES)
-
-## generate plots
-bc_plots_up <- map(1:4, function(j){#nrow()
-  bcp <- custom_barcode_plot(seq_results, up_fgsea$pathway[j]) + 
-    annotate('text', x=Inf , y=Inf, hjust=1, vjust=1, 
-             label=paste('NES =', round(up_fgsea$NES[j], 2), 
-                         '\nFDR =', round(up_fgsea$padj[j], 3)))
-  
-  return(bcp)
-})
-
-## plot to canvas
-reduce(c(bc_plots_up), `+`) + plot_layout(ncol=2)
-
-  ggsave("graphics/hallmark_signature_enrichment_upregulated.pdf")
-
-## plot to canvas
-reduce(c(bc_plots_down), `+`) + plot_layout(ncol=2)
-
-ggsave("graphics/hallmark_signature_enrichment_downregulated.pdf")
 
 
 ```
@@ -556,70 +401,93 @@ ggsave("graphics/hallmark_signature_enrichment_downregulated.pdf")
 
 # load RNA-Seq
 
-rna_data <- 
-  read_delim(file = "orthogonal_data/top_table_Young_vs_Aged_Wntinddep_upwithage.txt",delim = "\t") %>% 
+rna_data_exvivo <- 
+  read_delim(file = "orthogonal_data/bulk_exvivo_all_genes.txt",delim = "\t") %>%
   dplyr::select(SYMBOL=gene_name,log2FoldChange_rna=log2FoldChange,stat_rna=stat,padj_rna=padj,pvalue_rna=pvalue)
 
 #join with ATAC-seq
 
 joined_data <- res_edgeR %>%
   dplyr::select(PeakID,log2FoldChange,PValue,padj,SYMBOL) %>%
-  left_join(rna_data) %>%
+  left_join(rna_data_exvivo) %>%
   drop_na() %>%
   mutate(log2FoldChange=(log2FoldChange-mean(log2FoldChange))/sd(log2FoldChange),
          log2FoldChange_rna=(log2FoldChange_rna-mean(log2FoldChange_rna))/sd(log2FoldChange_rna))
 
 
-IFN_genes <- fgsea_hallmark %>% filter(pathway=="HALLMARK_INTERFERON_GAMMA_RESPONSE") %>% pull(leadingEdge) %>% unlist()
-ALLO_genes <- fgsea_hallmark %>% filter(pathway=="HALLMARK_ALLOGRAFT_REJECTION") %>% pull(leadingEdge) %>% unlist()
-WNT_genes <- fgsea_hallmark %>% filter(pathway=="HALLMARK_WNT_BETA_CATENIN_SIGNALING") %>% pull(leadingEdge) %>% unlist() %>% c(.,"Wnt5a","Ror2")
-  
-  
+IFN_genes <- c(msig_db_hallmarks$HALLMARK_INTERFERON_ALPHA_RESPONSE,
+               msig_db_hallmarks$HALLMARK_INTERFERON_GAMMA_RESPONSE,
+               msig_db_hallmarks$HALLMARK_INFLAMMATORY_RESPONSE,
+               msig_db_hallmarks$HALLMARK_IL6_JAK_STAT3_SIGNALING)
+
+TNFA_genes <- msig_db_hallmarks$HALLMARK_TNFA_SIGNALING_VIA_NFKB
+
+ALLO_genes <-msig_db_hallmarks$HALLMARK_ALLOGRAFT_REJECTION
+
 this_data <- joined_data %>% 
   filter(padj<0.1,padj_rna<0.1) %>% 
   mutate(IFNG=if_else(SYMBOL %in% IFN_genes,"ISG","other")) %>%
-  mutate(ALLO=if_else(SYMBOL %in% ALLO_genes,"ALLO","other")) %>%
-  mutate(WNT=if_else(SYMBOL %in% WNT_genes,"WNT","other")) 
+   mutate(TNFG=if_else(SYMBOL %in% TNFA_genes,"TNF","other")) %>%
+  mutate(ALLO=if_else(SYMBOL %in% ALLO_genes,"ALLO","other"))
 
 p2 <- this_data %>%
   ggplot(aes(x=log2FoldChange,y=log2FoldChange_rna,label=SYMBOL))  +
     geom_smooth(data=this_data,method = "lm",col=b110_grey_light)+ 
     geom_point(data = this_data %>% filter(IFNG=="other"),col=b110_grey) +
     geom_point(data = this_data %>% filter(IFNG=="ISG"),col="purple",size=3) +
+   geom_point(data = this_data %>% filter(TNFG=="TNF"),col=google_yellow,size=3) +
     geom_point(data = this_data %>% filter(ALLO=="ALLO"),col=google_green,size=3) +
-   geom_point(data = this_data %>% filter(WNT=="WNT"),col=google_yellow,size=3) +
-    ggrepel::geom_label_repel(data = this_data %>% filter(IFNG=="ISG"|ALLO=="ALLO"| WNT =="WNT")) +
+    ggrepel::geom_label_repel(data = this_data %>% filter(IFNG=="ISG"|ALLO=="ALLO"|TNFG=="TNF"),max.overlaps =100) +
     theme_cowplot() +
     xlab("Log2-FC ATAC-Seq")+
-    ylab("Log2-FC RNA-Seq")
+    ylab("Log2-FC RNA-Seq-exvivo")
 
-ggsave("graphics/differntial_comparison_ATAC_RNA_IFNg_ALLO_highlight.pdf",p2,width = 16,height = 10,units = "cm")
+print(p2)
+
+# load RNA-Seq
+
+rna_data_invivo <- 
+  read_delim(file = "orthogonal_data/bulk_invivo_all_genes.txt",delim = "\t") %>% 
+  dplyr::select(SYMBOL=gene_name,log2FoldChange_rna=log2FoldChange,stat_rna=stat,padj_rna=padj,pvalue_rna=pvalue) %>% 
+  mutate(log2FoldChange_rna=-log2FoldChange_rna,stat_rna=-stat_rna)
+
+#join with ATAC-seq
+
+joined_data <- res_edgeR %>%
+  dplyr::select(PeakID,log2FoldChange,PValue,padj,SYMBOL) %>%
+  left_join(rna_data_invivo) %>%
+  drop_na() %>%
+  mutate(log2FoldChange=(log2FoldChange-mean(log2FoldChange))/sd(log2FoldChange),
+         log2FoldChange_rna=(log2FoldChange_rna-mean(log2FoldChange_rna))/sd(log2FoldChange_rna))
+
+this_data <- joined_data %>% 
+  filter(padj<0.1,padj_rna<0.1) %>% 
+  mutate(IFNG=if_else(SYMBOL %in% IFN_genes,"ISG","other")) %>%
+   mutate(TNFG=if_else(SYMBOL %in% TNFA_genes,"TNF","other")) %>%
+  mutate(ALLO=if_else(SYMBOL %in% ALLO_genes,"ALLO","other"))
+
+p3 <- this_data %>%
+  ggplot(aes(x=log2FoldChange,y=log2FoldChange_rna,label=SYMBOL))  +
+    geom_smooth(data=this_data,method = "lm",col=b110_grey_light)+ 
+    geom_point(data = this_data %>% filter(IFNG=="other"),col=b110_grey) +
+    geom_point(data = this_data %>% filter(IFNG=="ISG"),col="purple",size=3) +
+   geom_point(data = this_data %>% filter(TNFG=="TNF"),col=google_yellow,size=3) +
+    geom_point(data = this_data %>% filter(ALLO=="ALLO"),col=google_green,size=3) +
+    ggrepel::geom_label_repel(data = this_data %>% filter(IFNG=="ISG"|ALLO=="ALLO"|TNFG=="TNF"),max.overlaps =100) +
+    theme_cowplot() +
+    xlab("Log2-FC ATAC-Seq")+
+    ylab("Log2-FC RNA-Seq-invivo")
+
+print(p3)
+
+
+ggsave("graphics/differntial_comparison_ATAC_RNA_IFNg_ALLO_highlight_exvivo.pdf",p2,width = 18,height = 12,units = "cm")
+
+ggsave("graphics/differntial_comparison_ATAC_RNA_IFNg_ALLO_highlight_invivo.pdf",p3,width = 18,height = 12,units = "cm")
+
+p2 + p3
 
 #    geom_smooth(method = 'lm')
-```
-
-
-```{r}
-
-data_to_plot <- joined_data %>% 
-  filter(SYMBOL %in% IFN_genes) %>% 
-  group_by(SYMBOL) %>% 
-  arrange(padj) %>%
-  slice_head(n=1) %>%
-  ungroup() %>%
-  dplyr::select(SYMBOL,log2FoldChange,padj,padj_rna,log2FoldChange_rna,pvalue=PValue,pvalue_rna) %>% 
-  gather(type,value,-SYMBOL) %>% 
-  separate(type,c("type","modality")) %>% 
-  mutate(modality=if_else(is.na(modality),"ATAC",modality)) %>% 
-  spread(type,value) %>%
-  group_by(modality) %>%
-  mutate(padj=-log10(padj)) #,padj=(padj-min(padj))/max(padj)
-
-data_to_plot %>% 
-  ggplot(aes(x=modality,y=SYMBOL,colour=log2FoldChange,size=padj)) +
-    geom_point() +
-    scale_color_gradient2(low = "blue",high = "red") +
-    theme_b110()
 ```
 
 #transcription factor binding side analysis
@@ -632,9 +500,20 @@ regionDB = loadRegionDB("orthogonal_data/LOLACore/mm10")
 peak <- readPeakFile("raw_data/consensus_peaks.mLb.clN.bed")
 seqlevelsStyle(peak) <- "UCSC"
 
-IFN_peak <- res_edgeR %>% filter(SYMBOL %in% IFN_genes, padj<0.1) %>% pull(PeakID)
+IFN_peak <- 
+  res_edgeR %>% 
+    filter(SYMBOL %in% msig_db_hallmarks$HALLMARK_INTERFERON_GAMMA_RESPONSE, padj<0.1) %>% pull(PeakID)
 
-locResults2 = runLOLA(peak[peak$V4 %in% IFN_peak,], peak, regionDB, cores=6)
+locResults = runLOLA(peak[peak$V4 %in% IFN_peak,], peak, regionDB, cores=6)
+
+p1 <- locResults %>% 
+  ggplot(aes(x=support,y=pValueLog, label=antibody)) + 
+    geom_point() + 
+    theme_cowplot() + 
+    ggrepel::geom_label_repel(data = locResults %>% arrange(desc(pValueLog)) %>% head(20),max.overlaps=100)
+
+ggsave("graphics/Chip_seek_TFBS_enrichment.pdf",p1,width = 12,height = 16,units = "cm")
+
 ```
 
 #ATAC-Seq vizualization
