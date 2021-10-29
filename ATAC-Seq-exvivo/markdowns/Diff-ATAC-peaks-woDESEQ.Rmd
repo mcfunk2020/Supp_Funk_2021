@@ -532,7 +532,7 @@ bm <- useMart(host = "http://nov2020.archive.ensembl.org",
               dataset = "mmusculus_gene_ensembl")
 
 gtrack <- GenomeAxisTrack()
-#itrack <- IdeogramTrack(genome = "mm10",chromosome = "chr16")
+
 biomTrack <- BiomartGeneRegionTrack(genome = "GRCm38.p6", name = "Gene structure", 
                                     biomart = bm,
                                     filter = list(with_refseq_mrna=TRUE), 
@@ -582,8 +582,8 @@ A1 <- DataTrack(range = A1_ranges,
                 data = "score", 
                 type = "h",
                 name = "Aged R1",
-                col="#3B3B3BCC",
-                fill="#3B3B3BCC",
+                col=maja_aged,
+                fill=maja_aged,
                 ylim = range_y)
 
 A2 <- DataTrack(range = A2_ranges,
@@ -591,92 +591,45 @@ A2 <- DataTrack(range = A2_ranges,
                 data = "score", 
                 type = "h",
                 name = "Aged R2",
-                col="#3B3B3BCC",
-                fill="#3B3B3BCC",
+                col=maja_aged,
+                fill=maja_aged,
                 ylim = range_y)
 A3 <- DataTrack(range = A3_ranges,
                 genome = "GRCm38", 
                 data = "score", 
                 type = "h",
                 name = "Aged R3",
-                col="#3B3B3BCC",
-                fill="#3B3B3BCC",
+                col=maja_aged,
+                fill=maja_aged,
                 ylim = range_y)
 Y1 <- DataTrack(range = Y1_ranges,
                 genome = "GRCm38", 
                 data = "score", 
                 type = "h",
                 name = "Young R1",
-                col="#EFC000CC",
-                fill="#EFC000CC",
+                col=maja_young,
+                fill=maja_young,
                 ylim = range_y)
 Y2 <- DataTrack(range = Y2_ranges,
                 genome = "GRCm38", 
                 data = "score", 
                 type = "h",
                 name = "Young R2",
-                col="#EFC000CC",
-                fill="#EFC000CC",
+                col=maja_young,
+                fill=maja_young,
                 ylim = range_y)
 Y3 <- DataTrack(range = Y3_ranges,
                 genome = "GRCm38", 
                 data = "score", 
                 type = "h", #histogram
                 name = "Young R3",
-                col="#EFC000CC",
-                fill="#EFC000CC",
+                col=maja_young,
+                fill=maja_young,
                 ylim = range_y)
 ```
 
 
 ```{r Wnt5a_example}
-chrom <- 14
-start_region <- 28026707
-end_region <- 28649405 
-
-GOI = "Wnt5a"
-
-starts_highlight <- res_edgeR %>% filter(SYMBOL==GOI) %>% filter(padj<0.2) %>% pull(start)
-end_highlight <- res_edgeR %>% filter(SYMBOL==GOI) %>% filter(padj<0.2) %>% pull(end)
-
-ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3),
-                     start = starts_highlight, end = end_highlight,
-                     chromosome = chrom,
-                     col=alpha(b110_grey_light,0.5),
-                     fill=alpha(b110_grey_light,0.5),
-                     inBackground=TRUE)
-
-pdf("graphics/Wnt5a_peak_zoomed.pdf")
-plotTracks(c(gtrack,ht),chromosome = chrom, 
-           from = 28490000, # if(start_region<min(starts_highlight)){start_region}else{min(starts_highlight)-1000}, 
-           to = 28540000)#if(end_region>max(end_highlight)){end_region}else{max(end_highlight)+1000} )
-dev.off()
-
-chrom <- 15
-start_region <- 74946000
-end_region <- 74961000  
-
-GOI = "Ly6e"
-POI =c("Interval_51712","Interval_51713")
-#starts_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(Start)
-#end_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(End)
-
-starts_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(start)
-end_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(end)
-
-
-ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3),
-                     start = starts_highlight, end = end_highlight,
-                     chromosome = chrom,
-                     col=alpha(b110_grey_light,0.5),
-                     fill=alpha(b110_grey_light,0.5),
-                     inBackground=TRUE)
-
-pdf("graphics/Ly6e_peak_large.pdf")
-plotTracks(c(gtrack,ht),chromosome = chrom, 
-           from = if(start_region<min(starts_highlight)){start_region}else{min(starts_highlight)-1000}, 
-           to = if(end_region>max(end_highlight)){end_region}else{max(end_highlight)+1000} )
-dev.off()
 
 
 chrom <- 16
@@ -696,7 +649,7 @@ ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3,Rela_track,STA
                      start = starts_highlight, end = end_highlight,
                      chromosome = chrom,
                      col=alpha(b110_grey_light,0.5),
-                     fill=alpha(b110_grey_light,0.5),
+                     fill=alpha(b110_grey_light,0),
                      inBackground=TRUE)
 
 pdf("graphics/Ciita_peak_large.pdf")
@@ -723,7 +676,7 @@ ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3,Rela_track,STA
                      start = starts_highlight, end = end_highlight,
                      chromosome = chrom,
                      col=alpha(b110_grey_light,0.5),
-                     fill=alpha(b110_grey_light,0.5),
+                     fill=alpha(b110_grey_light,0),
                      inBackground=TRUE)
 
 pdf("graphics/Ciita_peak_zoom.pdf")
@@ -745,11 +698,11 @@ starts_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(start)
 end_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(end)
 
 
-ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3),
+ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3,Rela_track,STAT1_track),
                      start = starts_highlight, end = end_highlight,
                      chromosome = chrom,
                      col=alpha(b110_grey_light,0.3),
-                     fill=alpha(b110_grey_light,0.3),
+                     fill=alpha(b110_grey_light,0),
                      inBackground=TRUE)
 
 pdf("graphics/Ccr2_peak_large.pdf")
@@ -757,6 +710,55 @@ plotTracks(c(gtrack,ht),chromosome = chrom,
            from = if(start_region<min(starts_highlight)){start_region}else{min(starts_highlight)-1000}, 
            to = if(end_region>max(end_highlight)){end_region}else{max(end_highlight)+1000} )
 dev.off()
+
+chrom <- 14
+start_region <- 28026707
+end_region <- 28649405 
+
+GOI = "Wnt5a"
+
+starts_highlight <- res_edgeR %>% filter(SYMBOL==GOI) %>% filter(padj<0.2) %>% pull(start)
+end_highlight <- res_edgeR %>% filter(SYMBOL==GOI) %>% filter(padj<0.2) %>% pull(end)
+
+ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3,Rela_track,STAT1_track),
+                     start = starts_highlight, end = end_highlight,
+                     chromosome = chrom,
+                     col=alpha(b110_grey_light,0.5),
+                     fill=alpha(b110_grey_light,0),
+                     inBackground=TRUE)
+
+pdf("graphics/Wnt5a_peak_zoomed.pdf")
+plotTracks(c(gtrack,ht),chromosome = chrom, 
+           from = 28490000, # if(start_region<min(starts_highlight)){start_region}else{min(starts_highlight)-1000}, 
+           to = 28540000)#if(end_region>max(end_highlight)){end_region}else{max(end_highlight)+1000} )
+dev.off()
+
+chrom <- 15
+start_region <- 74946000
+end_region <- 74961000  
+
+GOI = "Ly6e"
+POI =c("Interval_51712","Interval_51713")
+#starts_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(Start)
+#end_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(End)
+
+starts_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(start)
+end_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(end)
+
+
+ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3,Rela_track,STAT1_track),
+                     start = starts_highlight, end = end_highlight,
+                     chromosome = chrom,
+                     col=alpha(b110_grey_light,0.5),
+                     fill=alpha(b110_grey_light,0),
+                     inBackground=TRUE)
+
+pdf("graphics/Ly6e_peak_large.pdf")
+plotTracks(c(gtrack,ht),chromosome = chrom, 
+           from = if(start_region<min(starts_highlight)){start_region}else{min(starts_highlight)-1000}, 
+           to = if(end_region>max(end_highlight)){end_region}else{max(end_highlight)+1000} )
+dev.off()
+
 
 ```
 
