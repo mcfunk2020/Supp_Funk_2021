@@ -1,0 +1,428 @@
+---
+title: "Bulk-RNA Seq of the in vivo aged intestine"
+output:
+  html_document: default
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+this is normal text
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(DESeq2)
+library(tximportData)
+library(ggrepel)
+library(tidyverse)
+library(ggplot2)
+library(ggrepel)
+library(cowplot)
+
+
+```
+
+
+## B110 Theme
+
+```{r theme, include=FALSE}
+
+theme_b110 <- function(){
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 10), 
+    axis.title = element_text(size = 10),
+    plot.title = element_text(size = 12,hjust = 0.5,face = "bold"),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    legend.position = "bottom"
+    )
+  
+  theme_cowplot()
+}
+
+```
+
+## B110 Colors
+
+```{r colors}
+
+b110_grey   = '#808080'
+b110_grey_light   = '#909090'
+b110_transparent_black = alpha('#000000',0.5)
+google_red = '#dd4b39'
+google_green = '#0F9D58'
+google_yellow = '#F4B400'
+google_blue = '#4285F4'
+maja_red = alpha('#E64B35CC',0.8)
+maja_blue = alpha('#4DBBD5CC',0.8)
+maja_young = '#91D1C2CC'
+maja_youngD = '#00A087CC'
+maja_aged = '#8491B4CC'
+maja_agedD = '#3C5488CC'
+
+```
+
+## Read in the meta data
+
+```{r meta_data}
+
+raw_meta_data1 <- read_delim("../raw_data/19397_meta.tsv",delim = "\t")
+
+raw_meta_data1 %<>% 
+  filter(grepl("R1",FASTQ_FILE)) %>% 
+  mutate(run = gsub(pattern = "(.+)_.*.fastq.gz",replacement = "\\1",x = FASTQ_FILE)) %>% 
+  dplyr::rename(sample = SAMPLE_NAME) 
+
+
+```
+
+#import the data from star
+
+```{r,warning=F,message=F}
+
+merged_gene_counts = read_delim("../raw_data/merged_gene_counts.txt",delim = "\ ")
+
+star_data <- merged_gene_counts  %>% 
+  select(-starts_with("Undetermined"))
+
+colnames(star_data) <- gsub(pattern = "(\\S+?)Aligned.sortedByCoord.out.bam",replacement = "\\1",x = colnames(star_data))
+
+star_data_id2name <- star_data %>% select(-starts_with("AS"))
+
+star_data %<>% select(-gene_name) %>% column_to_rownames("Geneid") %>% as.data.frame()
+```
+  
+
+#prepare the DESeq2 data object
+
+```{r,warning=F,message=F}
+require("DESeq2")
+
+sampleTable<-
+  raw_meta_data1 %>% 
+  mutate(Age=factor(if_else(grepl("Aged|-A",sample),"Aged","Young"))) %>%
+  as.data.frame()
+
+rownames(sampleTable)<-sampleTable$run
+
+```
+
+#simple prefiltering
+
+```{r,warning=F,message=F}
+
+dds <- DESeqDataSetFromMatrix(star_data[,rownames(sampleTable)], sampleTable, ~Age)
+
+#counting transcripts
+
+nrow(dds)
+
+# 46078 transcripts
+
+#excluding genes that were not matched at all
+dds <- dds[ rowSums(counts(dds)) > 1, ]
+nrow(dds)
+
+#remaining 23073
+
+```
+
+#stabilize variance for low readcount genes
+
+```{r,warning=F,message=F}
+
+vsd <- vst(dds, blind = FALSE)
+
+```
+
+#cluster data to get an overview
+
+Treatments should cluster together
+
+```{r,warning=F,message=F}
+
+a <- plotPCA(vsd, "Age") + ggtitle("PCA by Age") + scale_color_manual(values=c(maja_agedD,maja_young)) + theme_cowplot()
+
+a
+
+ggsave("../Graphics/PCA_bulk_invivo.pdf",a,width = 10,height = 10,units ="cm")
+
+```
+
+
+# lets call differential genes
+
+```{r,warning=F,message=F}
+
+dds <- DESeq(dds)
+
+res1 <- results(dds)
+
+summary(res1)
+
+# --> there is quite a number of genes differential expressed --> lets look at who they are
+```
+
+# Aged over young
+
+```{r,warning=F,message=F}
+
+resultsNames(dds)
+
+res1 <- results(dds, contrast = c("Age","Aged","Young"))
+
+summary(res1)
+
+up_regulated_genes <- res1 %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "Geneid") %>% 
+  left_join(star_data_id2name)  %>% 
+  arrange(padj) %>% 
+  filter(log2FoldChange>0)
+
+write_delim(up_regulated_genes,"../results/bulk_invivo_Aged_vs_Young_UP.txt",delim = "\t")
+
+down_regulated_genes <- res1 %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "Geneid") %>% 
+  left_join(star_data_id2name)  %>% 
+  arrange(padj) %>% 
+  filter(log2FoldChange<0)
+
+write_delim(down_regulated_genes,"../results/bulk_invivo_Aged_vs_Young_DOWN.txt",delim = "\t")
+
+
+
+bulk_invivo_all_genes <- res1 %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "Geneid") %>% 
+  left_join(star_data_id2name)  %>% 
+  arrange(padj)
+
+write_delim(bulk_invivo_all_genes,"../results/bulk_invivo_all genes.txt",delim = "\t")
+
+summary(res1)
+
+
+
+#Volcano plots
+
+#p1=Top15 DEGs
+
+p1_data <-res1  %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "Geneid") %>% 
+  left_join(star_data_id2name) %>% 
+  mutate(signif=if_else(padj<=0.1,if_else(log2FoldChange>0,"up","down"),"none")) %>%
+  mutate(signif=if_else(log2FoldChange>-0.5 & log2FoldChange < 0.5,"none",signif)) %>%
+  tidyr::drop_na()
+  
+p1 = ggplot(p1_data,aes(x=log2FoldChange,y=-log10(pvalue),col=signif,name = gene_name)) +
+    geom_point()+
+    ggtitle("Aged_Over_Young_Top15")+
+    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
+    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
+    geom_label_repel(data=p1_data %>% arrange(desc(abs(stat))) %>% head(15), aes(label=gene_name), min.segment.length = 0, col="black")+
+    theme_cowplot()+
+    theme(legend.position = "none")
+
+ggsave("../Graphics/bulk_invivo_Volcano_Top15.pdf",p1,w = 12,h = 12,units = "cm")
+
+p1
+
+# p2 = GOIs for Fig 1
+
+p2_data <-res1  %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "Geneid") %>% 
+  left_join(star_data_id2name) %>% 
+  mutate(signif=if_else(padj<=0.1,if_else(log2FoldChange>0,"up","down"),"none")) %>%
+  mutate(signif=if_else(log2FoldChange>-0.5 & log2FoldChange < 0.5,"none",signif)) %>%
+  tidyr::drop_na()
+  
+p2=ggplot(p2_data,aes(x=log2FoldChange,y=-log10(pvalue),col=signif,name = gene_name)) +
+    geom_point()+
+    ylim(0,75) +
+    xlim(-7,7) +
+    ggtitle("Aged_Over_Young_GOI")+
+    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
+    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
+    geom_label_repel(data=p2_data %>% filter(gene_name %in% c("Ly6e","Stat1","Ifi47","H2-Aa","Ciita","Cd74", "Igtp","Ccr2","Tnf","Ifitm3","P2rx7", "Defa3","Defa17", "Defa26", "Defa24")), aes(label=gene_name), min.segment.length = 0, col="black")+
+    theme_cowplot()+
+    theme(legend.position = "none")
+
+ggsave("../Graphics/bulk_invivo_Volcano_DEGs_GOI.pdf",p2, w = 12,h = 12,units = "cm")   
+
+p2
+
+```
+
+# count plots GOIs 
+
+```{r,warning=F,message=F}
+require("ggbeeswarm")
+require("patchwork")
+
+LUT <- star_data_id2name %>% column_to_rownames("Geneid")
+
+GOI <- "Defa3" #rownames(res1)[which.min(res$padj)]
+topGene <- LUT %>% dplyr::filter(gene_name == GOI) %>% rownames_to_column("ENBSEMBLID") %>% pull(ENBSEMBLID)
+geneCounts <- plotCounts(dds, gene = topGene, intgroup = c("Age"), returnData = TRUE)
+geneCounts <- geneCounts %>% mutate(Age = factor(Age, levels = c("Young", "Aged"), ordered = TRUE))
+a <- ggplot(geneCounts, aes(x = Age, y = count,fill=Age)) +
+  geom_boxplot() +
+  geom_point(size = 1.5) +ggtitle(LUT[GOI,1]) +
+  scale_fill_manual(values = c(maja_young,maja_aged)) +
+  ggtitle(paste0(GOI)) +
+  theme_cowplot()
+
+GOI <- "Defa17" #rownames(res1)[which.min(res$padj)]
+topGene <- LUT %>% dplyr::filter(gene_name == GOI) %>% rownames_to_column("ENBSEMBLID") %>% pull(ENBSEMBLID)
+geneCounts <- plotCounts(dds, gene = topGene, intgroup = c("Age"), returnData = TRUE)
+geneCounts <- geneCounts %>% mutate(Age = factor(Age, levels = c("Young", "Aged"), ordered = TRUE))
+b <- ggplot(geneCounts, aes(x = Age, y = count,fill=Age)) +
+  geom_boxplot() +
+  geom_point(size = 1.5) +ggtitle(LUT[GOI,1]) +
+  scale_fill_manual(values = c(maja_young,maja_aged)) +
+  ggtitle(paste0(GOI)) +
+  theme_cowplot()
+
+GOI <- "Defa24" #rownames(res1)[which.min(res$padj)]
+topGene <- LUT %>% dplyr::filter(gene_name == GOI) %>% rownames_to_column("ENBSEMBLID") %>% pull(ENBSEMBLID)
+geneCounts <- plotCounts(dds, gene = topGene, intgroup = c("Age"), returnData = TRUE)
+geneCounts <- geneCounts %>% mutate(Age = factor(Age, levels = c("Young", "Aged"), ordered = TRUE))
+c <- ggplot(geneCounts, aes(x = Age, y = count,fill=Age)) +
+  geom_boxplot() +
+  geom_point(size = 1.5) +ggtitle(LUT[GOI,1]) +
+  scale_fill_manual(values = c(maja_young,maja_aged)) +
+  ggtitle(paste0(GOI)) +
+  theme_cowplot()
+
+GOI <- "Defa26" #rownames(res1)[which.min(res$padj)]
+topGene <- LUT %>% dplyr::filter(gene_name == GOI) %>% rownames_to_column("ENBSEMBLID") %>% pull(ENBSEMBLID)
+geneCounts <- plotCounts(dds, gene = topGene, intgroup = c("Age"), returnData = TRUE)
+geneCounts <- geneCounts %>% mutate(Age = factor(Age, levels = c("Young", "Aged"), ordered = TRUE))
+d <- ggplot(geneCounts, aes(x = Age, y = count,fill=Age)) +
+  geom_boxplot() +
+  geom_point(size = 1.5) +ggtitle(LUT[GOI,1]) +
+  scale_fill_manual(values = c(maja_young,maja_aged)) +
+  ggtitle(paste0(GOI)) +
+  theme_cowplot()
+
+GOI <- "Ciita" #rownames(res1)[which.min(res$padj)]
+topGene <- LUT %>% dplyr::filter(gene_name == GOI) %>% rownames_to_column("ENBSEMBLID") %>% pull(ENBSEMBLID)
+geneCounts <- plotCounts(dds, gene = topGene, intgroup = c("Age"), returnData = TRUE)
+geneCounts <- geneCounts %>% mutate(Age = factor(Age, levels = c("Young", "Aged"), ordered = TRUE))
+e <- ggplot(geneCounts, aes(x = Age, y = count,fill=Age)) +
+  geom_boxplot() +
+  geom_point(size = 1.5) +ggtitle(LUT[GOI,1]) +
+  scale_fill_manual(values = c(maja_young,maja_aged)) +
+  ggtitle(paste0(GOI)) +
+  theme_cowplot()
+
+GOI <- "Ly6e" #rownames(res1)[which.min(res$padj)]
+topGene <- LUT %>% dplyr::filter(gene_name == GOI) %>% rownames_to_column("ENBSEMBLID") %>% pull(ENBSEMBLID)
+geneCounts <- plotCounts(dds, gene = topGene, intgroup = c("Age"), returnData = TRUE)
+geneCounts <- geneCounts %>% mutate(Age = factor(Age, levels = c("Young", "Aged"), ordered = TRUE))
+f <- ggplot(geneCounts, aes(x = Age, y = count,fill=Age)) +
+  geom_boxplot() +
+  geom_point(size = 1.5) +ggtitle(LUT[GOI,1]) +
+  scale_fill_manual(values = c(maja_young,maja_aged)) +
+  ggtitle(paste0(GOI)) +
+  theme_cowplot()
+
+g <- (a+b)/(c+d)/(e+f)
+
+ggsave("../Graphics/bulk_invivo_boxplots_GOI.pdf",g,width =16 ,height = 16,units = "cm")
+
+g
+
+```
+
+#Gene set enrichment analysis
+
+#Interpretation
+
+Gene set annotations are downloaded from MSigDB
+https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp#H
+29.05.2020: 14:42 CET
+
+h.all : Hallmark gene sets
+
+Citation for hallmark collection:
+
+Liberzon A, Birger C, Thorvaldsdóttir H, Ghandi M, Mesirov JP, Tamayo P. The Molecular Signatures Database (MSigDB) hallmark gene set collection. Cell Syst. 2015 Dec 23;1(6):417-425. 
+ 
+
+Signature enrichment
+
+```{r}
+
+require(fgsea)
+require(msigdbr)
+ 
+#first we get the recent gene set expression signatures
+ 
+m_df <- msigdbr(species = "Mus musculus", category = "H")
+head(m_df)
+ 
+#format them for fgsea
+ 
+m_list = m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+
+this_data <- res1 %>% as.data.frame() %>% 
+  rownames_to_column(var = "Geneid") %>% 
+  left_join(star_data_id2name)
+
+seq_results <- this_data %>%
+  select(stat=stat,Symbol=gene_name,Geneid) %>%
+  column_to_rownames("Geneid") %>%
+  na.omit() %>% 
+  distinct() %>% 
+  group_by(Symbol) %>% 
+  summarize(stat=mean(stat)) %>%
+  ungroup() %>%
+  deframe()
+
+
+#GSEA of hallmark sets
+
+fgsea_hallmark <- fgsea(pathways=m_list, stats=seq_results, nperm=1000)
+fgsea_hallmarktdy <- fgsea_hallmark %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+a = fgsea_hallmarktdy %>% 
+  arrange(padj) %>%
+  head(.,40) %>%
+  ggplot(aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_b110()+
+  scale_fill_manual(values = c(b110_grey,google_blue))
+
+ggsave("../Graphics/GSEA_bulk_invivo_aged.pdf",a, width = 10, height = 20)
+
+a
+
+```
+
+
+#SessionInfo
+
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
