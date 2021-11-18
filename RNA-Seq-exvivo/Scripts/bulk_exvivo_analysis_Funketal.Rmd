@@ -404,6 +404,8 @@ fgsea_hallmarktdy <- fgsea_hallmark %>%
   as_tibble() %>%
   arrange(desc(NES))
 
+write_delim(fgsea_hallmarktdy,"../Results/fgsea_hallmarktdy_exvivo.txt",delim = "\t")
+
 a = fgsea_hallmarktdy %>% 
   arrange(padj) %>%
   head(.,40) %>%

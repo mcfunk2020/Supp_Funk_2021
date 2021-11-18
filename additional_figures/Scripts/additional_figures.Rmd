@@ -1,0 +1,449 @@
+---
+title: "Mouse RNA plots"
+author: "Erica Valentini"
+date: "8/16/2021"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 3
+    toc_float:
+      collapsed: no
+    smooth_scroll: yes
+  pdf_document: default
+  number_sections: no
+  highlight: tango
+  theme: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, cache=FALSE, tidy=TRUE, cache.lazy = FALSE)
+```
+
+# Load
+
+```{r load}
+library(readr)
+library(tidyverse)
+library(ggforce)
+library(fgsea)
+library(msigdbr)
+library(ggrepel)
+library(cowplot)
+library(viridis)
+library(ggpubr)
+library(ggExtra)
+library(RColorBrewer)
+library(waffle)
+library(pheatmap)
+library(dendextend)
+
+de_single_cell_dt_raw <- read_delim("../../scRNA-Seq-invivo/processed_data/DE_samples_as_replicates.tsv.gz",delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+fgsea_hallmarktdy_exvivo <- read_delim("../../RNA-Seq-exvivo/Results/fgsea_hallmarktdy_exvivo.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+fgsea_hallmarktdy_invivo <- read_delim("../../RNA-Seq-invivo/results/fgsea_hallmarktdy_invivo.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+invivo_count_table <- read_delim("../../RNA-Seq-invivo/raw_data/merged_gene_counts.txt", escape_double = FALSE, trim_ws = TRUE)
+invivo_metadata <- read_delim("../../RNA-Seq-invivo/raw_data/19397_meta.tsv", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+bulk_invivo_all_genes <- read_delim("../../RNA-Seq-invivo/results/bulk_invivo_all genes.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+sc_meta_and_reductions_tsv <- read_delim("../../scRNA-Seq-invivo/processed_data/meta_and_reductions.tsv.gz", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+bulk_organoids_all_genes <- read_delim("../../RNA-Seq-exvivo/Results/bulk_organoids_all_genes.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+
+
+b110_grey   = '#808080'
+b110_grey_light   = '#909090'
+b110_transparent_black = alpha('#000000',0.5)
+google_red = '#dd4b39'
+google_green = '#0F9D58'
+google_yellow = '#F4B400'
+google_blue = '#4285F4'
+maja_red = alpha('#E64B35CC',0.8)
+maja_blue = alpha('#4DBBD5CC',0.8)
+maja_young = '#91D1C2CC'
+maja_youngD = '#00A087CC'
+maja_aged = '#8491B4CC'
+maja_agedD = '#3C5488CC'
+
+levels_of_cell_type <- c("pseudo bulk", "dead cells", "Stem",       "TA",       "Enterocyte Progenitor", "Enterocyte",  "EEC",     "Paneth",       "Goblet & Paneth",         "Goblet",       "Tuft")
+labels_of_cell_type <- c("pseudo bulk", "dead cells", "Stem cells", "TA cells", "EC prog.",              "Enterocytes", "EECs",    "Paneth cells", "Goblet &\nPaneth cells",  "Goblet cells", "Tuft cells")
+colors_of_cell_type <- c("#303030",     "#303030",    "#66a61e",    "#1b9e77",  "#418DA6",               "#7570b3",     "#a846a0", "#ce5a02",      "#a6761d",                 "#e6ab02",      "#FE5D26"   )  # old tuft: e7298a #E53D00
+names(colors_of_cell_type) <- labels_of_cell_type
+
+```
+
+
+Modify de_single_cell input file:
+
+```{r modify_de_single_cell file}
+
+de_single_cell_dt <- de_single_cell_dt_raw %>% 
+  filter(contrast == "condition_young_vs_aged") %>% 
+  dplyr::rename("log2FoldChange" = "estimate", "lfcSE" = "stderror", "stat" = "statistic", "pvalue" = "p.value", "padj" = "p.adjusted") %>% 
+  filter(cell_type != "pseudo bulk")
+
+```
+
+# DotPlot cell types enriched
+
+```{r dotplot_sc, fig.height=8, fig.width=8}
+
+cell_type_order <-  c("Stem cells", "TA cells", "EC prog.", "Enterocytes", "EECs", "Paneth cells", "Goblet cells", "Tuft cells")
+
+de_single_cell_dt <- de_single_cell_dt %>% 
+  mutate(cell_type_final = ifelse(cell_type %in% c("EEC", "Enterocyte Progenitor", "Enterocyte"), cell_type, paste(cell_type, "cells", sep = " "))) %>% 
+  mutate(cell_type_final = case_when(
+  cell_type == "Enterocyte"            ~ "Enterocytes",
+  cell_type == "EEC"                   ~ "EECs",
+  cell_type == "Enterocyte Progenitor" ~ "EC prog.",
+  TRUE ~ cell_type_final)) %>% 
+  mutate(cell_type = cell_type_final)
+
+m_df <- msigdbr(species = "Mus musculus", category = "H")
+ 
+#format them for fgsea
+ 
+m_list = m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+list_filter <- c("HALLMARK_INTERFERON_GAMMA_RESPONSE", "HALLMARK_INTERFERON_ALPHA_RESPONSE", "HALLMARK_ALLOGRAFT_REJECTION", "HALLMARK_TNFA_SIGNALING_VIA_NFKB", "HALLMARK_INFLAMMATORY_RESPONSE", "HALLMARK_IL6_JAK_STAT3_SIGNALING", "HALLMARK_UV_RESPONSE_UP", "HALLMARK_P53_PATHWAY", "HALLMARK_APOPTOSIS", "HALLMARK_MTORC1_SIGNALING", "HALLMARK_UNFOLDED_PROTEIN_RESPONSE", "HALLMARK_FATTY_ACID_METABOLISM", "HALLMARK_XENOBIOTIC_METABOLISM", "HALLMARK_MYC_TARGETS_V1", "HALLMARK_MITOTIC_SPINDLE", "HALLMARK_G2M_CHECKPOINT", "HALLMARK_WNT_BETA_CATENIN_SIGNALING", "HALLMARK_HYPOXIA")
+
+cell_type_dotplot <- c("Stem cells", "TA cells", "EC prog.", "Enterocytes", "Goblet cells")
+cell_types <- de_single_cell_dt %>% distinct(cell_type) %>% pull(cell_type)
+
+cell_type_fgsea_df <- vector(mode = "list", length = length(cell_types))
+
+for (type in seq(1,length(cell_types))) {
+  seq_results <- de_single_cell_dt %>% filter(cell_type == cell_types[[type]]) %>% select(gene, stat) %>% mutate(stat = -stat) %>% deframe()
+  fgsea_hallmark <- fgsea(pathways=m_list, stats=seq_results)
+  fgsea_hallmarktdy <- fgsea_hallmark %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+  cell_type_fgsea_df[[type]] <- fgsea_hallmarktdy
+}
+
+names(cell_type_fgsea_df) <- cell_types 
+
+cell_type_all_hallmarks <- cell_type_fgsea_df %>% 
+  bind_rows(.id = "cell_type") %>%
+  mutate(cell_type = factor(cell_type, levels = cell_type_order)) %>% 
+  filter(padj < 0.05) %>% 
+  ggplot(aes(x=cell_type, y=pathway, color=NES, size=-log10(padj))) + 
+  geom_point() + 
+  scale_colour_gradient2(high = "red", low = "blue") + 
+  theme_cowplot() +
+  theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90")) +
+  ylab("Hallmark Pathway") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+cell_type_all_hallmarks
+
+ggsave(cell_type_all_hallmarks, filename = "../Graphics/sc_cell_type_all_hallmarks.pdf", device = "pdf", bg = "white", width = 2600, height = 2600, units = "px")
+
+cell_type_selected_hallmarks <- cell_type_fgsea_df %>% 
+  bind_rows(.id = "cell_type") %>%
+  filter(padj < 0.05) %>% 
+  filter(pathway %in% list_filter) %>%
+  mutate(pathway = factor(pathway, levels = rev(list_filter))) %>% 
+  filter(cell_type %in% cell_type_dotplot) %>% 
+  mutate(cell_type = factor(cell_type, levels = cell_type_dotplot)) %>% 
+  ggplot(aes(x=cell_type, y=pathway, color=NES, size=-log10(padj))) + 
+  geom_point() + 
+  scale_colour_gradient2(high = "red", low = "blue") + 
+  theme_cowplot() +
+  theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90")) +
+  ylab("Hallmark Pathway") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+cell_type_selected_hallmarks
+
+ggsave(cell_type_selected_hallmarks, filename = "../Graphics/sc_cell_type_selected_hallmarks.pdf", device = "pdf", bg = "white", width = 2400, height = 2000, units = "px")
+
+```
+
+# Enrichplot
+
+```{r enrichplot}
+
+dotplot <- fgsea_hallmarktdy_invivo %>% 
+    filter(padj < 0.05) %>% 
+    filter(pathway %in% list_filter) %>% 
+    ggplot(aes(y=reorder(pathway, NES), x=NES, color=padj, size = size)) + 
+    geom_point() + 
+    ylab("Pathway") +
+    scale_color_viridis() +
+    theme_cowplot() + 
+    geom_vline(xintercept = 0, size=0.25, linetype='solid', colour="gray70") + 
+    theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90"))
+
+dotplot
+
+ggsave(dotplot, filename = "../Graphics/gsea_dotplot.pdf", device = "pdf", bg = "white", width = 2400, height = 2000, units = "px")
+
+dotplot_inverted <- fgsea_hallmarktdy_invivo %>% 
+    filter(padj < 0.05) %>% 
+    filter(pathway %in% list_filter) %>% 
+    ggplot(aes(y=reorder(pathway, NES), x=NES, color=padj, size = size)) + 
+    geom_point() + 
+    ylab("Pathway") +
+    scale_color_viridis(direction = -1) +
+    theme_cowplot() + 
+    geom_vline(xintercept = 0, size=0.25, linetype='solid', colour="gray70") + 
+    theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90"))
+
+dotplot_inverted
+
+ggsave(dotplot_inverted, filename = "../Graphics/gsea_dotplot_inverted.pdf", device = "pdf", bg = "white", width = 2400, height = 2000, units = "px")
+ 
+
+
+sidebyside <- fgsea_hallmarktdy_invivo %>% 
+  mutate(type = "invivo") %>% 
+  filter(padj < 0.05) %>% 
+  rbind(fgsea_hallmarktdy_exvivo %>% 
+          mutate(type="exvivo") %>% 
+          filter(padj < 0.05)) %>% 
+  mutate(type = fct_relevel(type, "invivo")) %>%
+  filter(pathway %in% list_filter) %>% 
+  mutate(pathway = factor(pathway, levels = rev(list_filter))) %>%
+  ggplot(aes(x=type, y=pathway, color=NES, size=-log10(padj))) + 
+  geom_point() +
+  scale_colour_gradient2(high = "red", low = "blue") +
+  theme_cowplot() +
+  theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90")) +
+  ylab("Hallmark Pathway")
+
+sidebyside
+
+ggsave(sidebyside, filename = "../Graphics/gsea_dotplot_sidebyside.pdf", device = "pdf", bg = "white", width = 2400, height = 1800, units = "px")
+
+```
+
+# Heatmaps
+
+```{r heatmap}
+
+invivo_count_table <- invivo_count_table[rowSums(invivo_count_table %>% select(!c("Geneid", "gene_name"))) > 1,]
+
+genes_set_1 <- c("H2-Aa", "H2-Ab1", "H2-DMa", "H2-DMb1", "H2-Eb1", "Ceacam10", "Cd74", "Ciita")
+
+data_subset <- invivo_count_table %>% 
+  as_tibble() %>% 
+  filter(gene_name %in% genes_set_1) %>% 
+  arrange(gene_name) %>% 
+  column_to_rownames(var = "gene_name") %>% 
+  select(-Geneid) %>% 
+  as.matrix()
+
+annotation <- invivo_metadata %>% 
+  select(FASTQ_FILE, SAMPLE_NAME) %>% 
+  filter(FASTQ_FILE != "Undetermined_1.fastq.gz") %>% 
+  separate(SAMPLE_NAME, into=c("sample_name", "type"), sep = "-", remove=FALSE) %>% 
+  mutate(FASTQ_FILE = substring(FASTQ_FILE, 1, nchar(FASTQ_FILE)-12)) %>% 
+  mutate(count_column_names = paste0(FASTQ_FILE, "Aligned.sortedByCoord.out.bam")) %>% 
+  arrange(match(count_column_names, colnames(data_subset)))
+
+identical(annotation$count_column_names, colnames(data_subset))
+
+annotation <- annotation %>% column_to_rownames(var = "SAMPLE_NAME")
+
+colnames(data_subset) <- rownames(annotation)
+
+cal_z_score <- function(x){
+  (x - mean(x)) / sd(x)
+}
+
+anno_colors = list(
+  type = c(Y = maja_young, A=maja_aged)
+)
+
+data_subset_norm <- t(apply(data_subset, 1, cal_z_score))
+
+callback = function(hc, mat){
+    sv = svd(t(mat))$v[,1]
+    dend = reorder(as.dendrogram(hc), wts = sv)
+    as.hclust(dend)
+}
+
+
+data_subset_norm <- t(apply(data_subset, 1, cal_z_score))
+
+heatmap1 <- pheatmap(data_subset_norm)
+col_dend <- heatmap1$tree_col
+col_dend <- dendextend::rotate(col_dend, order = rev(colnames(data_subset_norm)[heatmap1$tree_col$order]))
+
+pheatmap(data_subset_norm, annotation_col = annotation %>% select(type), color = colorRampPalette(rev(brewer.pal(n=7, name="RdBu")))(100), annotation_colors = anno_colors, cluster_cols = as.hclust(col_dend), cluster_rows = FALSE, clustering_callback = callback, cellwidth = 60, cellheight = 60, filename = "../Graphics/heatmap1.pdf")
+
+
+genes_set_2 <- c("Gbp2", "Gbp6", "Gbp7", "Gbp8", "Gbp9")
+
+data_subset <- invivo_count_table %>% 
+  as_tibble() %>% 
+  filter(gene_name %in% genes_set_2) %>% 
+  arrange(gene_name) %>% 
+  column_to_rownames(var = "gene_name") %>% 
+  select(-Geneid) %>% 
+  as.matrix()
+
+identical(annotation$count_column_names, colnames(data_subset))
+
+colnames(data_subset) <- rownames(annotation)
+
+data_subset_norm <- t(apply(data_subset, 1, cal_z_score))
+
+pheatmap(data_subset_norm, annotation_col = annotation %>% select(type), color = colorRampPalette(rev(brewer.pal(n=7, name="RdBu")))(100), annotation_colors = anno_colors, cluster_rows = FALSE, cellwidth = 80, cellheight = 80, filename = "../Graphics/heatmap2.pdf")
+
+```
+
+
+
+# Cell type percentage: waffle chart
+
+In the following plot, each square represents a 0.5% of the cells
+
+```{r cell_type_waffle}
+
+round_preserve_sum <- function(x, digits = 0) {
+  x <- x
+  y <- floor(x)
+  indices <- tail(order(x-y), round(sum(x)) - sum(y))
+  y[indices] <- y[indices] + 1
+  y
+}
+
+
+waffle_data <- sc_meta_and_reductions_tsv %>% 
+  group_by(cell_type) %>% 
+  dplyr::count() %>% 
+  ungroup() %>% 
+  mutate(perc_2 = round_preserve_sum(`n`/sum(`n`)*200)) %>% 
+  mutate(percentage = round(`n`/sum(`n`)*100, 1)) %>% 
+  left_join(tibble(cell_type = levels_of_cell_type, cell_type_name = labels_of_cell_type)) %>%
+  mutate(cell_type_name = factor(cell_type_name, levels = rev(cell_type_order))) %>% 
+  arrange(cell_type_name)
+
+write_tsv(waffle_data, file = "../Results/cell_type_stats_waffle.tsv")
+
+waffle_plot <- waffle_data %>% 
+  ggplot(aes(values=perc_2, fill=cell_type_name)) + 
+  geom_waffle(colour = "white", flip = TRUE) +
+  coord_equal() +
+  scale_fill_manual(values = colors_of_cell_type[!names(colors_of_cell_type) %in% c("pseudo bulk", "dead cells", "Goblet &\nPaneth cells")]) +
+  theme_void()
+
+waffle_plot
+
+ggsave(waffle_plot, filename = "../Graphics/waffle_plot.pdf", device = "pdf", bg = "white")
+```
+
+
+
+# DotPlot cell types MHC
+
+```{r dotplot_mhc, fig.height=4, fig.width=6}
+
+genes_set_1 <- c("H2-Aa", "H2-Ab1", "H2-DMa", "H2-DMb1", "H2-Eb1", "Ceacam10", "Cd74", "Ciita")
+
+dotplot_mhc <- de_single_cell_dt %>% 
+  mutate(cell_type = factor(cell_type, levels = rev(cell_type_order))) %>% 
+  filter(gene %in% genes_set_1) %>% 
+  ggplot(aes(y=cell_type, x=gene, color=-(log2FoldChange), size=-log10(padj))) + 
+  geom_point() + 
+  scale_colour_viridis(option = "magma", direction = -1) + 
+  theme_cowplot() +
+  ylab("MHC genes") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+dotplot_mhc
+
+ggsave(dotplot_mhc, filename = "../Graphics/dotplot_mhc.pdf", device = "pdf", bg = "white")
+
+```
+
+
+# Correlation plot
+
+```{r correlation}
+
+correlation_plot <- bulk_invivo_all_genes %>% 
+  full_join(bulk_organoids_all_genes, by = c("gene_name"), suffix=c(".iv", ".ev")) %>% 
+  filter(padj.iv < 0.1, padj.ev < 0.1) %>% 
+  ggscatter(x = "log2FoldChange.iv", y = "log2FoldChange.ev", add = "reg.line", conf.int = TRUE, add.params = list(color = "blue", fill="lightgray"), color = "gray10", alpha = 0.6) +
+  geom_rug(side = "bi", color = "gray10") +
+  stat_cor(method = "pearson") +
+  coord_fixed()
+
+correlation_plot
+
+ggsave(correlation_plot, filename = "../Graphics/correlation_plot.pdf", device = "pdf", bg = "white")
+```
+
+# Volcano Plots
+
+```{r volcano}
+
+shared_21_genes <- c("Cd74", "H2-Ab1", "1700011H14Rik", "H2-Eb1", "Muc2", "Irf1", "H2-Aa", "Ly6e", "Igtp", "Tifa", "H2-DMb1", "Psmb8", "Nrn1", "Prss32", "Ciita", "Sp140", "H2-DMa", "Oat", "H2-Q7", "Parp3", "Sepp1")
+
+volcano_sc_pseudobulk <- de_single_cell_dt_raw %>%
+  filter(contrast == "condition_young_vs_aged") %>% 
+  filter(cell_type == "pseudo bulk") %>% 
+  mutate(signif=if_else(p.adjusted<=0.1,if_else(-estimate>0,"up","down"),"none")) %>%
+  mutate(signif=if_else(abs(estimate) < 0.5,"none",signif)) %>%
+  tidyr::drop_na() %>% 
+  ggplot(aes(x=-estimate,y=-log10(p.value),col=signif,name = gene)) +
+    geom_point()+
+    xlab("log2FoldChange") +
+    ylab("-log10(pvalue)") +
+    ggtitle("Aged_Over_Young_Top15_Pseudobulk") +
+    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
+    geom_label_repel(data = de_single_cell_dt_raw %>% filter(contrast == "condition_young_vs_aged") %>% filter(cell_type == "pseudo bulk") %>% arrange(desc(abs(statistic))) %>% head(15), aes(label=gene), min.segment.length = 0, col="black") +
+    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
+    theme_cowplot()
+
+volcano_sc_pseudobulk
+
+ggsave(volcano_sc_pseudobulk, filename = "../Graphics/volcano_sc_pseudobulk.pdf", device = "pdf", bg = "white")
+
+volcano_sc_pseudobulk_21genes <- de_single_cell_dt_raw %>%
+  filter(contrast == "condition_young_vs_aged") %>% 
+  filter(cell_type == "pseudo bulk") %>% 
+  mutate(signif=if_else(p.adjusted<=0.1,if_else(-estimate>0,"up","down"),"none")) %>%
+  mutate(signif=if_else(abs(estimate) < 0.5,"none",signif)) %>%
+  tidyr::drop_na() %>% 
+  ggplot(aes(x=-estimate,y=-log10(p.value),col=signif,name = gene)) +
+    geom_point()+
+    xlab("log2FoldChange") +
+    ylab("-log10(pvalue)") +
+    ggtitle("Aged_Over_Young_21_genes_in_common_Pseudobulk") +
+    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
+    geom_label_repel(data = de_single_cell_dt_raw %>% filter(gene %in% shared_21_genes) %>% filter(cell_type == "pseudo bulk"), aes(label=gene), min.segment.length = 0, col="black") +
+    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
+    theme_cowplot()
+
+volcano_sc_pseudobulk_21genes
+
+ggsave(volcano_sc_pseudobulk_21genes, filename = "../Graphics/volcano_sc_pseudobulk_21genes.pdf", device = "pdf", bg = "white")
+
+for (type in unique(de_single_cell_dt$cell_type)) {
+  print(type)
+  volcano <- de_single_cell_dt %>%
+  filter(cell_type == type) %>% 
+  mutate(signif=if_else(padj<=0.1,if_else(-log2FoldChange>0,"up","down"),"none")) %>%
+  mutate(signif=if_else(abs(log2FoldChange) < 0.5,"none",signif)) %>%
+  tidyr::drop_na() %>% 
+  ggplot(aes(x=-log2FoldChange,y=-log10(pvalue),col=signif,name = gene)) +
+    geom_point()+
+    xlab("log2FoldChange") +
+    ggtitle(paste0("Aged_Over_Young_Top20_", type)) +
+    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
+    geom_label_repel(data = de_single_cell_dt %>% filter(cell_type == type) %>% arrange(desc(abs(stat))) %>% head(20), aes(label=gene), min.segment.length = 0, col="black") +
+    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
+    theme_cowplot()
+  print(volcano)
+  
+  ggsave(volcano, filename = paste0("../Graphics/volcano_sc_", type, ".pdf"), device = "pdf", bg = "white")
+}
+
+```
+
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```

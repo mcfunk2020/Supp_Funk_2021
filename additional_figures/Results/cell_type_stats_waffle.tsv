@@ -1,0 +1,9 @@
+cell_type	n	perc_2	percentage	cell_type_name
+Tuft	58	1	0.4	Tuft cells
+Goblet	1097	16	8.2	Goblet cells
+Paneth	201	3	1.5	Paneth cells
+EEC	429	6	3.2	EECs
+Enterocyte	782	12	5.8	Enterocytes
+Enterocyte Progenitor	2304	35	17.2	EC prog.
+TA	6368	95	47.6	TA cells
+Stem	2143	32	16	Stem cells
