@@ -1,0 +1,193 @@
+---
+title: scRNAseq analysis plots
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+params:
+  aggregated_data_dir: "processed_data"
+  processed_data_dir: "processed_data"
+  differential_expression_dir: "processed_data"
+  meta_data_dir: "analysis_pipeline"
+  results_dir: "results"
+---
+``` {r attach packages , warn=FALSE, message=FALSE, echo=FALSE}
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+library(patchwork)
+library(colorspace)
+```
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "setup_chunk.R")), echo=FALSE, eval=TRUE, collapse=TRUE, }
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "setup_chunk.R")) # needed if run interactively in RStudio
+```
+
+```{r load helper functions, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "helper_functions_and_colors.R")), echo=TRUE, eval=TRUE, class.source = 'fold-hide'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "helper_functions_and_colors.R")) # needed if run interactively in RStudio
+```
+
+```{r load cell meta data}
+dt <- fread(fs::path(processed_data_dir, "meta_and_reductions.tsv.gz"), sep= "\t")
+```
+
+```{r tSNE_by_sample_id}
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=sample_id)) +
+  geom_cell() +
+  # scale_color_sample_id() +
+  NULL
+```
+
+```{r tSNE_by_cell_type}
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=cell_type)) +
+  geom_cell() +
+  scale_color_cell_type() +
+  NULL
+```
+
+```{r tSNE_by_age}
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=condition)) +
+  geom_cell() +
+  scale_color_age() +
+  NULL
+```
+
+```{r cell numbers per type}
+n_cells_dt <- dt[, .(n_cells = .N), by = .(cell_type, sample_id, treatment, condition)][, fraction_of_cells := n_cells/sum(n_cells), by = sample_id]
+
+n_cells_dt[, mean_fraction_of_cells := mean(fraction_of_cells), by= cell_type][, rare := mean_fraction_of_cells < max(mean_fraction_of_cells)/4]
+
+dodge_width <- 0.9
+point_jitter_width <- 0.0
+this_dodge <- function(width = dodge_width, reverse = TRUE, padding = 0.2) position_dodge2(width = width, reverse = reverse, padding = padding)
+
+p <- n_cells_dt %>% ggplot(aes(x = cell_type, y = fraction_of_cells, color = condition)) +
+  stat_summary(aes(fill = condition), fun.data = mean_se, geom = "col", position = this_dodge(), width = dodge_width) +
+  stat_summary(aes(color = stage(condition, after_scale = colorspace::darken(color, 0.3))), fun.data = mean_se, geom = "errorbar", position = this_dodge(padding=1/3), width = dodge_width) +
+  stat_summary(aes(group = interaction(cell_type, condition), color = stage(condition, after_scale = colorspace::darken(color, 0.3))), fun = mean, geom = "crossbar", position = this_dodge(), width = dodge_width) +
+  geom_point(position = position_jitterdodge(point_jitter_width, dodge.width = dodge_width), aes(group = interaction(cell_type, forcats::fct_rev(condition)), fill=condition), color = "black") +
+  labs(y = "fraction of cells per sample") +
+  guides(color = "none") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_color_age() +
+  scale_fill_age() +
+  scale_x_cell_type() +
+  theme(axis.title.x = element_blank()) +
+  NULL
+p
+```
+
+
+
+
+```{r cell number proportion change, error = TRUE}
+n_cells_dt[, broom::tidy(t.test(log(fraction_of_cells)~condition, data = .SD)), by = cell_type][, .(relative_change_fraction_ci = pmax(1-exp(conf.low), exp(conf.high)-1)), by = cell_type][]
+n_cells_dt[, broom::tidy(t.test(fraction_of_cells~condition, data = .SD)), by = cell_type
+           ][, .(mean_fraction_young = estimate2, absolute_change_fraction_ci = pmax(abs(conf.low), abs(conf.high)), conf.low, conf.high, pval = p.value), by = cell_type
+             ][, relative_change_fraction_ci := scales::percent_format(1)(absolute_change_fraction_ci/mean_fraction_young)
+               ][, adj_pval := p.adjust(pval, method = "BH")][]
+```
+
+
+# DEGs
+
+```{r}
+de_single_cell_dt <- fread(fs::path(differential_expression_dir, "DE_samples_as_replicates.tsv.gz"), sep="\t")
+de_single_cell_dt <- de_single_cell_dt[contrast == "condition_young_vs_aged"]
+de_single_cell_dt[, gene_name := gene]
+setnames(de_single_cell_dt, 
+         old =  c("estimate", "stderror", "statistic", "p.value", "p.adjusted"),
+         new = c("log2FoldChange", "lfcSE", "stat", "pvalue", "padj")
+)
+
+cell_types <- de_single_cell_dt[, sort(unique(cell_type))]
+cell_types <- c(cell_types[cell_types %in% "pseudo bulk"], cell_types[!(cell_types %in% "pseudo bulk")])
+
+de_single_cell_dt[is.na(padj), padj := 1]
+```
+
+
+```{r visualize number of degs}
+n_genes_differentially_expressed_per_celltype <- de_single_cell_dt[cell_type != "pseudo bulk"][padj<0.1][, .N , keyby = cell_type][is.na(N), N := 0]
+n_genes_differentially_expressed_per_celltype[intersect(levels_of_cell_type, cell_type),]
+de_single_cell_dt[cell_type != "pseudo bulk"] %>% ggplot(aes(x = cell_type, y = -log2FoldChange)) +
+  ggrastr::rasterize(geom_jitter(color = "gray"), dpi = 600) +
+  ggforce::geom_sina(aes(color = cell_type), data = de_single_cell_dt[cell_type != "pseudo bulk"][padj<0.1], scale="width") +
+  labs(y = "log2fc aged/young") +
+  guides(color = "none") +
+  geom_hline(yintercept = 0, color = "gray50", linetype="dashed") +
+  scale_x_cell_type(labels = paste0(labels_of_cell_type, " [", n_genes_differentially_expressed_per_celltype[levels_of_cell_type, N], "]")) +
+  scale_color_cell_type() +
+  theme(axis.title.x = element_blank()) +
+  NULL
+```
+
+
+```{r volcano, fig.height=3.5}
+n_highlight <- 20
+volcano_plot(de_single_cell_dt[cell_type=="pseudo bulk",],
+  highlight = rank(- (abs(log2FoldChange)-(lfcSE*qnorm(1-0.1*n_highlight/length(lfcSE)))))<=n_highlight, 
+  label_size = 2.5, 
+  force_pull = 5, 
+  point.padding = 0.2,
+  force = 70,
+  #nudge_y = 10,
+  color = "black",     # text color
+  bg.color = "white", # shadow color
+  bg.r = 0.2          # shadow radius
+) +
+  facet_wrap("cell_type") +
+  NULL
+```
+
+```{r mhcII pval}
+mhcII_features_dt <- fread(fs::path(meta_data_dir, "SI_feature_gene_lists.tsv"))[feature %in% "MHC class II"]
+mhcII_features_dt <- de_single_cell_dt[mhcII_features_dt, on = .(gene = marker_gene_symbol)]
+effect_range <- mhcII_features_dt[, max(abs(log2FoldChange))] * c(-1, 1)
+symmetric_limits <- function(lim) max(abs(lim)) * c(-1, 1)
+```
+
+
+```{r mhcII pval 1, fig.height=3.5, fig.width=7}
+r <- as(hex2RGB(maja_red),"polarLUV")@coords
+b <- as(hex2RGB(maja_blue),"polarLUV")@coords
+scale_color_effect_size <- function(name = "log2fc aged\nvs. young", c1 = 200, cmax = 200, l1 = 50, l2=10, h1 = b[,3], h2 = r[,3], n_interp = 51, limits = symmetric_limits, ...) 
+                                    colorspace::scale_color_continuous_diverging(name = name, c1 = c1, cmax = cmax, l1 = l1, l2 = l2, h1 = h1, h2 = h2, n_interp = n_interp, limits = limits, ...)
+
+mhcII_features_dt[cell_type != "pseudo_bulk"] %>%
+  ggplot(aes(x = gene, y = cell_type, color = -log2FoldChange)) +
+  geom_point(aes(size = -log10(padj))) +
+  #theme(panel.background = element_rect(fill = 'gray')) +
+  scale_size_continuous("negative log10\nadjusted p-value")+
+  scale_y_cell_type() +
+  #theme(axis.line = element_blank()) +
+  scale_color_effect_size() +
+  guides(fill = guide_colorbar(), x=guide_axis(angle=90)) +
+ # theme(legend.direction = "vertical", legend.box = "horizontal") +
+  NULL
+```
+
+
+
+
+
+```{r, supplementary figure qc filtering}
+dt %>% ggplot(aes(x=nCount_RNA, y=fraction_mito, color=sample_id)) +
+  geom_cell() +
+  facet_wrap("cell_type", nrow=2) +
+  labs(x = "counts", y = "fraction of counts from mitochondrial genes") +
+  theme(
+    panel.grid.major.x = element_line(color="gray95", size = 0.3),
+    panel.grid.minor.x = element_line(color="gray95", size = 0.1),
+    panel.grid.major.y = element_line(color="gray95", size = 0.3),
+    panel.grid.minor.y = element_line(color="gray95", size = 0.1)
+  ) +
+  schelpr::scale_x_log()+
+  guides(color = guide_legend(override.aes = list(size = 1))) +
+  NULL
+```
+
