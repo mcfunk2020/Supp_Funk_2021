@@ -44,9 +44,9 @@ scale_x_cell_type <- function(
 
 scale_y_cell_type <- function(
   name = "cell type",
-  breaks = levels_of_cell_type,
-  labels = labels_of_cell_type,
-  limits = function(x) levels_of_cell_type[levels_of_cell_type %in% x],
+  breaks = rev(levels_of_cell_type),
+  labels = rev(labels_of_cell_type),
+  limits = function(x) rev(levels_of_cell_type[levels_of_cell_type %in% x]),
   guide = guide_axis(
     #n.dodge=2,
     #angle = 45,
@@ -74,20 +74,37 @@ scale_color_cell_type <- function(
   ...
 )
 
+scale_fill_cell_type <- function(
+  name = "cell type",
+  breaks = levels_of_cell_type,
+  labels = labels_of_cell_type,
+  values = colors_of_cell_type,
+  limits = identity,
+  na.value = "#808080",
+  guide = guide_legend(override.aes = list(size = legend_dot_size)),
+  ...
+) scale_fill_manual(
+  name = name,
+  breaks = breaks,
+  limits = limits,
+  labels = labels,
+  values = values,
+  na.value = na.value,
+  guide = guide,
+  ...
+)
+
 scale_x_age <- function(..., limits = c("young", "aged")) scale_x_discrete(..., limits = limits)
 
 age_colors <- c(young = "#91D1C2CC", aged = "#3C5488CC")
+age_colors_light <- c(young = "#91D1C2CC", aged = "#8491B4CC")
+age_colors_dark <- c(young = "#00A087CC", aged = "#3C5488CC")
 
 scale_color_age <- function(..., limits = names(age_colors), values = age_colors, na.value = "grey", guide = guide_legend(override.aes = list(size = legend_dot_size))) ggplot2::scale_color_manual(..., limits = limits, values = values, na.value = na.value, guide = guide)
+#scale_color_age_dark <- function(..., values = age_colors_dark) scale_color_age(..., values = values)
 
 scale_fill_age <- function(..., limits = names(age_colors), values = age_colors, na.value = "grey", guide = guide_legend(override.aes = list(size = legend_dot_size))) ggplot2::scale_fill_manual(..., limits = limits, values = values, na.value = na.value, guide = guide)
-
-scale_set <- function(...) scale_color_manual(
-  breaks = levels_of_set,
-  labels = labels_of_set,
-  values = c("#808080", '#ffe119', '#4363d8', '#f58231',  '#3cb44b',  '#e6194b', '#911eb4', '#46f0f0', '#f032e6'),
-  ...
-)
+scale_fill_age_dark <- function(..., values = age_colors_dark) scale_fill_age(..., values = values)
 
 volcano_plot <- function(dt, alpha = 0.1, highlight = rank(padj)<=20, color = "black", box.padding = 0.25, label_size = 4, ...){
   if(missing(alpha)) message(paste0("FDR <= alpha = ", alpha))
