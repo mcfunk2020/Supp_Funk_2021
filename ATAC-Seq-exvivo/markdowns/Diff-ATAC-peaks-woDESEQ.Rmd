@@ -123,7 +123,7 @@ count_data <- raw_peaks %>%
 
 # edgeR pipeline
 
-Becasue of: 
+Because of: 
 Gontarz, P., Fu, S., Xing, X. et al. Comparison of differential accessibility analysis strategies for ATAC-seq data. Sci Rep 10, 10150 (2020). https://doi.org/10.1038/s41598-020-66998-4
 
 We are rather using edgeR on this particular data set.
@@ -170,6 +170,8 @@ write_delim(x = res_edgeR,delim = ",",file = "results/annotated_differential_pea
 
 ```
 
+We will however use the variance stabilization of DESeq2 to vizualize the the data dispersion.
+
 #simple prefiltering
 
 ```{r pre_filter,warning=F,message=F}
@@ -200,41 +202,66 @@ ggsave("graphics/PCA_clustering_qc.pdf",a,width=10,height=7,unit="cm")
 
 ```{r volcano}
 volcano_data <- res_edgeR %>%
-  mutate(signif=if_else(padj<=0.1,if_else(log2FoldChange>0,"up","down"),"none")) %>%
-  filter(padj<0.5)
+  mutate(signif=if_else(padj<=0.1,if_else(log2FoldChange>0,"up","down"),"none"))
 
 p1 <- volcano_data %>%
-  ggplot(aes(x=log2FoldChange,y=-log10(PValue),col=signif,label=SYMBOL)) +
+  ggplot(aes(x=log2FoldChange,y=-log10(PValue),col=signif,label=SYMBOL))+
+    geom_vline(xintercept = 0,lwd=0.5,lty=2,col="grey") +
     geom_point()+
     ggtitle("Getting more or less accessible with age")  +
    scale_color_manual(values = c(maja_blue,b110_grey_light,maja_red)) +
     theme_cowplot() +
     ggrepel::geom_label_repel(data = volcano_data %>% 
                                 arrange(padj) %>% 
-                                slice_head(n = 30),col="black") +
-    geom_vline(xintercept = c(-.5,.5),lwd=0.5,lty=2)
-
-ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_all.pdf",p1,width = 24,height = 15,units = "cm")
-
-volcano_data <- res_edgeR %>%
-  filter(padj<0.5) %>% 
-  mutate(signif=if_else(padj<=0.1,if_else(log2FoldChange>0,"up","down"),"none"))
+                                slice_head(n = 30),col="black") 
 
 p2 <- volcano_data %>%
   ggplot(aes(x=log2FoldChange,y=-log10(PValue),col=signif,label=SYMBOL)) +
+    geom_vline(xintercept = 0,lwd=0.5,lty=2, col="grey") +
     geom_point()+
     scale_color_manual(values = c(maja_blue,b110_grey_light,maja_red)) +
     theme_cowplot() +
     ggrepel::geom_label_repel(data = volcano_data %>% 
-                                filter(SYMBOL %in% c("Ly6e","Ccr2","Oasl2","Ciita","Dhx58")),min.segment.length = 0,col="black",max.overlaps = 100,size=3) +
-    geom_vline(xintercept = c(-.5,.5),lwd=0.5,lty=2) +
+                                filter(SYMBOL %in% c("Ly6e","Ccr2","Oasl2","Ciita","Dhx58")),min.segment.length = 0,col="black",max.overlaps = 100,size=3)  +
     ylim(0,60) +
     xlim(-4.5,4) +
     theme(legend.position = "none")
 
+print(p1)
 print(p2)
 
 ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_focussed_GOI.pdf",p2,width = 8,height = 8,units = "cm")
+ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_all.pdf",p1,width = 24,height = 15,units = "cm")
+
+# produce rastered versions
+require(ggrastr)
+
+p3 <- volcano_data %>%
+  ggplot(aes(x=log2FoldChange,y=-log10(PValue),col=signif,label=SYMBOL))+
+    geom_vline(xintercept = 0,lwd=0.5,lty=2,col="grey") +
+    geom_point_rast(raster.dpi = 600)+
+    ggtitle("Getting more or less accessible with age")  +
+   scale_color_manual(values = c(maja_blue,b110_grey_light,maja_red)) +
+    theme_cowplot() +
+    ggrepel::geom_label_repel(data = volcano_data %>% 
+                                arrange(padj) %>% 
+                                slice_head(n = 30),col="black") 
+
+p4 <- volcano_data %>%
+  ggplot(aes(x=log2FoldChange,y=-log10(PValue),col=signif,label=SYMBOL)) +
+    geom_vline(xintercept = 0,lwd=0.5,lty=2, col="grey") +
+    geom_point_rast(raster.dpi = 600)+
+    scale_color_manual(values = c(maja_blue,b110_grey_light,maja_red)) +
+    theme_cowplot() +
+    ggrepel::geom_label_repel(data = volcano_data %>% 
+                                filter(SYMBOL %in% c("Ly6e","Ccr2","Oasl2","Ciita","Dhx58")),min.segment.length = 0,col="black",max.overlaps = 100,size=3)  +
+    ylim(0,60) +
+    xlim(-4.5,4) +
+    theme(legend.position = "none")
+
+ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_all_rastered.pdf",p3,width = 24,height = 15,units = "cm")
+
+ggsave("graphics/Volcano_differentially_open_chromatin_edgeR_focussed_GOI_rastered.pdf",p4,width = 8,height = 8,units = "cm")
 
 
 ```
@@ -549,6 +576,7 @@ options(Gviz.scheme = "myScheme")
 A1_ranges <- import.bw("raw_data/A_R1.mLb.clN.bigWig", as="GRanges") 
 A2_ranges <- import.bw("raw_data/A_R2.mLb.clN.bigWig", as="GRanges") 
 A3_ranges <- import.bw("raw_data/A_R3.mLb.clN.bigWig", as="GRanges") 
+
 Y1_ranges <- import.bw("raw_data/Y_R1.mLb.clN.bigWig", as="GRanges")
 Y2_ranges <- import.bw("raw_data/Y_R2.mLb.clN.bigWig", as="GRanges") 
 Y3_ranges <- import.bw("raw_data/Y_R3.mLb.clN.bigWig", as="GRanges") 
@@ -762,5 +790,41 @@ dev.off()
 
 ```
 
+#Ciita detail vizualization
 
+```{r Wnt5a_example}
+rm(A1,A1_ranges,A2,A2_ranges,A3,A3_ranges)
+rm(Y1,Y1_ranges,Y2,Y2_ranges,Y3,Y3_ranges)
+range_y <- c(0,1.5)
+
+A_ranges <- import("raw_data/A_MEAN.mLb.clN.wig", as="GRanges") 
+
+Y_ranges <- import("raw_data/Y_MEAN.mLb.clN.wig", as="GRanges")
+
+
+chrom <- 16
+start_region <- 10470000
+end_region <- 10530000
+
+GOI = "Ciita"
+POI =c("Interval_55659")
+
+starts_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(start)
+end_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(end)
+
+
+ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3,Rela_track,STAT1_track),
+                     start = starts_highlight, end = end_highlight,
+                     chromosome = chrom,
+                     col=alpha(b110_grey_light,0.5),
+                     fill=alpha(b110_grey_light,0),
+                     inBackground=TRUE)
+
+pdf("graphics/Ciita_peak_large_zoom.pdf")
+plotTracks(c(gtrack,ht),chromosome = chrom, 
+           from = if(start_region<min(starts_highlight)){start_region}else{min(starts_highlight)-1000}, 
+           to = if(end_region>max(end_highlight)){end_region}else{max(end_highlight)+1000} )
+dev.off()
+
+```
 
