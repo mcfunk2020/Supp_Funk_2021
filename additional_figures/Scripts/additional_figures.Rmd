@@ -298,6 +298,7 @@ In the following plot, each square represents a 0.5% of the cells
 
 ```{r cell_type_waffle}
 
+#apply largest remainder method to be sure that the number of cells is summing up to 200
 round_preserve_sum <- function(x, digits = 0) {
   x <- x
   y <- floor(x)
@@ -383,16 +384,15 @@ volcano_sc_pseudobulk <- de_single_cell_dt_raw %>%
   filter(contrast == "condition_young_vs_aged") %>% 
   filter(cell_type == "pseudo bulk") %>% 
   mutate(signif=if_else(p.adjusted<=0.1,if_else(-estimate>0,"up","down"),"none")) %>%
-  mutate(signif=if_else(abs(estimate) < 0.5,"none",signif)) %>%
   tidyr::drop_na() %>% 
   ggplot(aes(x=-estimate,y=-log10(p.value),col=signif,name = gene)) +
     geom_point()+
     xlab("log2FoldChange") +
     ylab("-log10(pvalue)") +
     ggtitle("Aged_Over_Young_Top15_Pseudobulk") +
-    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
+    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +    
+    geom_vline(xintercept = 0,lty=2) +
     geom_label_repel(data = de_single_cell_dt_raw %>% filter(contrast == "condition_young_vs_aged") %>% filter(cell_type == "pseudo bulk") %>% arrange(desc(abs(statistic))) %>% head(15), aes(label=gene), min.segment.length = 0, col="black") +
-    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
     theme_cowplot()
 
 volcano_sc_pseudobulk
@@ -403,7 +403,6 @@ volcano_sc_pseudobulk_21genes <- de_single_cell_dt_raw %>%
   filter(contrast == "condition_young_vs_aged") %>% 
   filter(cell_type == "pseudo bulk") %>% 
   mutate(signif=if_else(p.adjusted<=0.1,if_else(-estimate>0,"up","down"),"none")) %>%
-  mutate(signif=if_else(abs(estimate) < 0.5,"none",signif)) %>%
   tidyr::drop_na() %>% 
   ggplot(aes(x=-estimate,y=-log10(p.value),col=signif,name = gene)) +
     geom_point()+
@@ -411,8 +410,8 @@ volcano_sc_pseudobulk_21genes <- de_single_cell_dt_raw %>%
     ylab("-log10(pvalue)") +
     ggtitle("Aged_Over_Young_21_genes_in_common_Pseudobulk") +
     scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
+    geom_vline(xintercept = 0,lty=2) +
     geom_label_repel(data = de_single_cell_dt_raw %>% filter(gene %in% shared_21_genes) %>% filter(cell_type == "pseudo bulk"), aes(label=gene), min.segment.length = 0, col="black") +
-    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
     theme_cowplot()
 
 volcano_sc_pseudobulk_21genes
@@ -424,15 +423,14 @@ for (type in unique(de_single_cell_dt$cell_type)) {
   volcano <- de_single_cell_dt %>%
   filter(cell_type == type) %>% 
   mutate(signif=if_else(padj<=0.1,if_else(-log2FoldChange>0,"up","down"),"none")) %>%
-  mutate(signif=if_else(abs(log2FoldChange) < 0.5,"none",signif)) %>%
   tidyr::drop_na() %>% 
   ggplot(aes(x=-log2FoldChange,y=-log10(pvalue),col=signif,name = gene)) +
     geom_point()+
     xlab("log2FoldChange") +
     ggtitle(paste0("Aged_Over_Young_Top20_", type)) +
     scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
-    geom_label_repel(data = de_single_cell_dt %>% filter(cell_type == type) %>% arrange(desc(abs(stat))) %>% head(20), aes(label=gene), min.segment.length = 0, col="black") +
-    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
+    geom_vline(xintercept = 0,lty=2) +
+    geom_label_repel(data = de_single_cell_dt %>% filter(cell_type == type) %>% arrange(desc(abs(stat))) %>% head(20), aes(label=gene), min.segment.length = 0, col="black", max.overlaps = Inf) +
     theme_cowplot()
   print(volcano)
   
