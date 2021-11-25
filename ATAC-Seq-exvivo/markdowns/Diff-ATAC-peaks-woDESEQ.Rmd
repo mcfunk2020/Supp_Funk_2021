@@ -24,6 +24,7 @@ library(TxDb.Mmusculus.UCSC.mm10.knownGene)
 library(org.Mm.eg.db)
 library(tidyverse)
 library(cowplot)
+
 ## B110 Theme
 
 theme_b110<-function(){
@@ -649,7 +650,7 @@ Y2 <- DataTrack(range = Y2_ranges,
 Y3 <- DataTrack(range = Y3_ranges,
                 genome = "GRCm38", 
                 data = "score", 
-                type = "h", #histogram
+                type = "h", 
                 name = "Young R3",
                 col=maja_young,
                 fill=maja_young,
@@ -666,8 +667,6 @@ end_region <- 10530000
 
 GOI = "Ciita"
 POI =c("Interval_55659")
-#starts_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(Start)
-#end_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(End)
 
 starts_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(start)
 end_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(end)
@@ -693,8 +692,6 @@ end_region <- 10490000
 
 GOI = "Ciita"
 POI =c("Interval_55659")
-#starts_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(Start)
-#end_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(End)
 
 starts_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(start)
 end_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(end)
@@ -719,8 +716,6 @@ end_region <- 124113557
 
 GOI = "Ccr2"
 POI =c("Interval_153605")
-#starts_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(Start)
-#end_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(End)
 
 starts_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(start)
 end_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(end)
@@ -757,8 +752,8 @@ ht <- HighlightTrack(trackList = list(biomTrack,Y1,Y2,Y3,A1,A2,A3,Rela_track,STA
 
 pdf("graphics/Wnt5a_peak_zoomed.pdf")
 plotTracks(c(gtrack,ht),chromosome = chrom, 
-           from = 28490000, # if(start_region<min(starts_highlight)){start_region}else{min(starts_highlight)-1000}, 
-           to = 28540000)#if(end_region>max(end_highlight)){end_region}else{max(end_highlight)+1000} )
+           from = 28490000, 
+           to = 28540000)
 dev.off()
 
 chrom <- 15
@@ -767,8 +762,6 @@ end_region <- 74961000
 
 GOI = "Ly6e"
 POI =c("Interval_51712","Interval_51713")
-#starts_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(Start)
-#end_highlight <- res_edgeR %>% filter(Gene_Name==GOI) %>% filter(padj<0.2) %>% pull(End)
 
 starts_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(start)
 end_highlight <- res_edgeR %>% filter(PeakID %in% POI) %>% pull(end)
