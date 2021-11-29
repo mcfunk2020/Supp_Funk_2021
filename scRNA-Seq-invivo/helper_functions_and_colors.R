@@ -117,8 +117,8 @@ volcano_plot <- function(dt, alpha = 0.1, highlight = rank(padj)<=20, color = "b
   dt %>% ggplot(aes(x = -log2FoldChange, y = -log10(pvalue))) +
     #geom_vline(xintercept = 0, linetype = "dotted") +
     geom_vline(xintercept = 0, linetype = "dashed") +
-    ggrastr::rasterize(geom_point(aes(color = sir.class))) +
-    geom_point(data = dt[sir.class != "not significant",], aes(color = sir.class)) +
+    ggrastr::rasterize(geom_point(data = dt[sir.class == "not significant",],aes(color = sir.class), size=0.5)) +
+    geom_point(data = dt[sir.class != "not significant",], aes(color = sir.class), size=0.5) +
     scale_color_manual(breaks = c("down regulated", "up regulated", "not significant"), values = c(maja_blue, maja_red, maja_gray)) +
     guides(color = guide_legend(title = element_blank())) +
     labs(x = "log2fc aged/young") +
