@@ -135,6 +135,24 @@ cell_type_all_hallmarks
 
 ggsave(cell_type_all_hallmarks, filename = "../Graphics/sc_cell_type_all_hallmarks.pdf", device = "pdf", bg = "white", width = 2600, height = 2600, units = "px")
 
+all_cell_type_selected_hallmarks <- cell_type_fgsea_df %>% 
+  bind_rows(.id = "cell_type") %>%
+  filter(padj < 0.05) %>% 
+  filter(pathway %in% list_filter) %>%
+  mutate(pathway = factor(pathway, levels = rev(list_filter))) %>% 
+  mutate(cell_type = factor(cell_type, levels = cell_type_order)) %>% 
+  ggplot(aes(x=cell_type, y=pathway, color=NES, size=-log10(padj))) + 
+  geom_point() + 
+  scale_colour_gradient2(high = "red", low = "blue") + 
+  theme_cowplot() +
+  theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90")) +
+  ylab("Hallmark Pathway") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+all_cell_type_selected_hallmarks
+
+ggsave(all_cell_type_selected_hallmarks, filename = "../Graphics/all_sc_cell_type_selected_hallmarks.pdf", device = "pdf", bg = "white", width = 2400, height = 2000, units = "px")
+
 cell_type_selected_hallmarks <- cell_type_fgsea_df %>% 
   bind_rows(.id = "cell_type") %>%
   filter(padj < 0.05) %>% 
