@@ -49,16 +49,21 @@ so <- so[, !is.na(so$cell)]
 so %<>% Seurat::NormalizeData()
 ```
 
-```{r marker gene and score tSNE plots, fig.height=12, fig.width=7}
+```{r marker gene and score tSNE plots, fig.height=18, fig.width=9}
 example_marker_genes <- c("Stem cells" = "Olfm4", "Paneth cells" = "Defa24", "Goblet cells" = "Muc2", "Enteroendocrine cells" = "Chgb", "Enterocytes" = "Fabp1", "Tuft cells" = "Dclk1")
+cell_type_labels <- c("Stem cells" = "Stem", "Paneth cells" = "Paneth", "Goblet cells" = "Goblet", "Enteroendocrine cells" = "EEC", "Enterocytes" = "Enterocyte", "Tuft cells" = "Tuft")
+
+
 expression_dt <- as.data.table((exp(Matrix::t(Seurat::GetAssayData(so)[example_marker_genes,]))-1)*1E6/1E4 , keep.rownames = "cell" )
 dt <- expression_dt[dt, on = "cell"]
 
 p_gene_s <- lapply(example_marker_genes, function(gene) {
-  dt %>% ggplot(aes_string(x = "tSNE_1", y = "tSNE_2", color = gene)) + geom_cell() + scale_color_continuous(trans = "log1p", breaks = schelpr::log1p_breaks(TRUE, 10), name = paste0(gene, "\n[CPM]"))
+  dt %>% ggplot(aes_string(x = "tSNE_1", y = "tSNE_2", color = gene)) + geom_cell() +  schelpr::scale_color_log1p_scaled(scale=1/100, name = paste0(gene, "\n[CPM]"))
 })
+
+
 p_score_s <- lapply(names(example_marker_genes), function(cell_type) {
-  dt %>% ggplot(aes_string(x = "tSNE_1", y = "tSNE_2", color = paste0("`", cell_type, "`"))) + geom_cell() + scale_color_continuous(paste0(cell_type, "\nscore"))
+  dt %>% ggplot(aes_string(x = "tSNE_1", y = "tSNE_2", color = paste0("`", cell_type, "`"))) + geom_cell() + scale_color_continuous(stringr::str_wrap(paste0(cell_type_labels[cell_type], " score"), 12)) #my_wrap(cell_type))
 })
 
 p_name_s <- lapply(names(example_marker_genes), function(cell_type) {
@@ -69,21 +74,23 @@ wrap_plots(c(p_name_s, p_gene_s, p_score_s), ncol = 3, byrow=FALSE, widths = c(0
 
 ```
 
-```{r marker gene and score umap plots, fig.height=12, fig.width=7}
+```{r marker gene and score umap plots, fig.height=18, fig.width=9}
 example_marker_genes <- c("Stem" = "Olfm4", "Enterocyte.Mature.Proximal" = "Fabp1","Endocrine" = "Chgb", "Paneth" = "Defa24", "Goblet" = "Muc2",  "Tuft" = "Dclk1")
+cell_type_labels <- c("Stem" = "Stem", "Paneth" = "Paneth", "Goblet" = "Goblet", "Endocrine" = "EEC", "Enterocyte.Mature.Proximal" = "Enterocyte", "Tuft" = "Tuft")
+cell_type_labels2 <- c("Stem" = "Stem cells", "Paneth" = "Paneth cells", "Goblet" = "Goblet cells", "Endocrine" = "EECs", "Enterocyte.Mature.Proximal" = "Enterocytes", "Tuft" = "Tuft cells")
 
 expression_dt <- as.data.table((exp(Matrix::t(Seurat::GetAssayData(so)[example_marker_genes,]))-1)*1E6/1E4 , keep.rownames = "cell" )
 dt <- expression_dt[dt, on = "cell"]
 
 p_gene_s <- lapply(example_marker_genes, function(gene) {
-  dt %>% ggplot(aes_string(x = "UMAP_1", y = "UMAP_2", color = gene)) + geom_cell() + scale_color_continuous(trans = "log1p", breaks = schelpr::log1p_breaks(TRUE, 10), name = paste0(gene, "\n[CPM]"))
+  dt %>% ggplot(aes_string(x = "tSNE_1", y = "tSNE_2", color = gene)) + geom_cell() + schelpr::scale_color_log1p_scaled(scale=1/100, name = paste0(gene, "\n[CPM]"))
 })
 p_score_s <- lapply(names(example_marker_genes), function(cell_type) {
-  dt %>% ggplot(aes_string(x = "UMAP_1", y = "UMAP_2", color = paste0("`prediction.score.", cell_type, "`"))) + geom_cell() + scale_color_continuous(paste0(cell_type, "\nscore"))
+  dt %>% ggplot(aes_string(x = "tSNE_1", y = "tSNE_2", color = paste0("`prediction.score.", cell_type, "`"))) + geom_cell() + scale_color_continuous(stringr::str_wrap(paste0(cell_type_labels[cell_type], " score"), 12))
 })
 
 p_name_s <- lapply(names(example_marker_genes), function(cell_type) {
-  wrap_elements(plot=grobTree(rectGrob(gp=gpar(col= 'black')), textGrob(cell_type, rot = 90)), clip = TRUE) 
+  wrap_elements(plot=grobTree(rectGrob(gp=gpar(col= 'black')), textGrob(cell_type_labels[cell_type], rot = 90)), clip = TRUE) 
 })
 
 wrap_plots(c(p_name_s, p_gene_s, p_score_s), ncol = 3, byrow=FALSE, widths = c(0.13, 1, 1)) + plot_annotation(tag_levels = list(c(letters[seq_along(p_name_s)],character(length(p_name_s)*2))))  
