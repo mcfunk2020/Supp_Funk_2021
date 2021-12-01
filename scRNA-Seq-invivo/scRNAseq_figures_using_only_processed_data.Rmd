@@ -112,18 +112,18 @@ de_single_cell_dt[is.na(padj), padj := 1]
 ```
 
 
-```{r visualize number of degs}
-n_genes_differentially_expressed_per_celltype <- de_single_cell_dt[cell_type != "pseudo bulk"][padj<0.1][, .N , keyby = cell_type][is.na(N), N := 0]
-n_genes_differentially_expressed_per_celltype[intersect(levels_of_cell_type, cell_type),]
+```{r visualize number of degs, fig.height=3.5, fig.width=7.7}
+n_genes_differentially_expressed_per_celltype <- de_single_cell_dt[cell_type != "pseudo bulk"][padj<0.1][, .N , keyby = cell_type][levels_of_cell_type,][is.na(N), N := 0]
+n_genes_differentially_expressed_per_celltype
 de_single_cell_dt[cell_type != "pseudo bulk"] %>% ggplot(aes(x = cell_type, y = -log2FoldChange)) +
   ggrastr::rasterize(geom_jitter(color = "gray"), dpi = 600) +
   ggforce::geom_sina(aes(color = cell_type), data = de_single_cell_dt[cell_type != "pseudo bulk"][padj<0.1], scale="width") +
-  labs(y = "log2fc aged/young") +
+  labs(y = "log2 FC aged / young") +
   guides(color = "none") +
   geom_hline(yintercept = 0, color = "gray50", linetype="dashed") +
-  scale_x_cell_type(labels = paste0(labels_of_cell_type, " [", n_genes_differentially_expressed_per_celltype[levels_of_cell_type, N], "]")) +
+  scale_x_cell_type() +
   scale_color_cell_type() +
-  theme(axis.title.x = element_blank()) +
+  theme(axis.title.x = element_blank(), aspect.ratio = 2/3) +
   NULL
 ```
 
