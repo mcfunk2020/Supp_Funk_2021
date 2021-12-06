@@ -19,4 +19,4 @@ In summary, our data disentangle the inflammaging phenotype on a cellular level 
 
 Should you encounter any issues or have any questions please contact Maja C. Funk <maja.funk@dkfz.de> or Florian Heigwer <f.heigwer@dkfz.de>.
 
-Raw sequencing read data are deposit at GEO under the Study ID: TBA
+Raw sequencing read data are deposit at GEO under the Study ID: GSE190286
