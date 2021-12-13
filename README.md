@@ -17,3 +17,17 @@ With age, tissues experience functional decline by a combination of intrinsic an
 Should you encounter any issues or have any questions please contact Maja C. Funk <maja.funk@dkfz.de> or Florian Heigwer <f.heigwer@dkfz.de>.
 
 Raw sequencing read data are deposit at GEO under the Study ID: GSE190286
+
+
+## Directory information
+
+The directory is structured by experiment:
+
+All samples are epithelial cells from the mouse small intestine of young and aged mice:
+
+in vivo single-cell RNA-Seq
+in vivo bulk RNA-Seq
+ex vivo bulk RNA-Seq
+ex vivo ATAC-Seq
+
+Each experiment folder contains a README file which provides the information on which notebook (folder "Scripts") was used to generate the plots and graphics to the respective experiment. These can be found in the folder "Graphics". The README file also explains to which exact figure the respective graphic/plot relates. 
