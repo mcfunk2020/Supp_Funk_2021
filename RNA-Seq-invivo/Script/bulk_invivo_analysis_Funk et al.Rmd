@@ -1,8 +1,8 @@
 ---
 title: "Bulk-RNA Seq of the in vivo aged intestine"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 editor_options: 
   chunk_output_type: console
 ---
@@ -249,8 +249,8 @@ p2=ggplot(p2_data,aes(x=log2FoldChange,y=-log10(pvalue),col=signif,name = gene_n
     xlim(-7,7) +
     ggtitle("Aged_Over_Young_GOI")+
     scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
-    geom_vline(xintercept = c(0.5, -0.5), lty=2) + geom_hline(yintercept = 2,lty=2) +
-    geom_label_repel(data=p2_data %>% filter(gene_name %in% c("Ly6e","Stat1","Ifi47","H2-Aa","Ciita","Cd74", "Igtp","Ccr2","Tnf","Ifitm3","P2rx7", "Defa3","Defa17", "Defa26", "Defa24")), aes(label=gene_name), min.segment.length = 0, col="black")+
+    geom_vline(xintercept = c(0.5, -0.5), lty=2) +
+    geom_label_repel(data=p2_data %>% filter(gene_name %in% c("Ly6e","Stat1","Ifi47","H2-Aa","Ciita","Cd74", "Igtp","Ccr2","Tnf","Ifitm3","P2rx7", "Defa3","Defa17", "Defa26", "Defa24", "Wnt3")), aes(label=gene_name), min.segment.length = 0, col="black")+
     theme_cowplot()+
     theme(legend.position = "none")
 
@@ -323,7 +323,7 @@ e <- ggplot(geneCounts, aes(x = Age, y = count,fill=Age)) +
   ggtitle(paste0(GOI)) +
   theme_cowplot()
 
-GOI <- "Ly6e" #rownames(res1)[which.min(res$padj)]
+GOI <- "Wnt3" #rownames(res1)[which.min(res$padj)]
 topGene <- LUT %>% dplyr::filter(gene_name == GOI) %>% rownames_to_column("ENBSEMBLID") %>% pull(ENBSEMBLID)
 geneCounts <- plotCounts(dds, gene = topGene, intgroup = c("Age"), returnData = TRUE)
 geneCounts <- geneCounts %>% mutate(Age = factor(Age, levels = c("Young", "Aged"), ordered = TRUE))
