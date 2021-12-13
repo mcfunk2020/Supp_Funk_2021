@@ -1,4 +1,4 @@
-# Funk et al., TBA 2021
+# Funk et al., TBA
 
 _The paper this repository relates to is currently under preparation._
 
