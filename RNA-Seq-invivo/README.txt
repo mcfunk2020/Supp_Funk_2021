@@ -7,6 +7,8 @@ Fig 1b: bulk_invivo_Volcano_DEGs_GOI
 
 Fig 1e (& Fig 4d): GSEA_bulk_invivo_aged
 
+Extended Fig 1a: PCA_bulk_invivo
+
 Extended Fig 1b: bulk_invivo_Volcano_Top15
 
 Extended Fig 1c (& Fig 5g): bulk_invivo_boxplots_GOI
