@@ -244,13 +244,9 @@ dts_wides <- dts_wide[, do.call(cbind, lapply(.SD, mean_cl_normal)), .SDcols = c
 dts %>%
   ggplot(aes(x = inflammaging_score_scaled, y = cell_type, color = condition)) +
   xlab("inflammaging score") +
-  #geom_line(aes(group = cell_type), color = "gray", size = 1) +
-  #stat_summary(aes(group = stage(interaction(cell_type, condition), after_stat = cell_type)), geom = "line") +
   geom_segment(data = dts_wides, aes(x = inflammaging_score_scaled_young.y, xend = inflammaging_score_scaled_aged.y, yend = cell_type), color = "gray",  size = 1) +
   stat_summary(geom = "point", size = 5) +
   geom_point() +
-  #geom_point(aes(x = cell_type_inflammaging_score), size = 2, alpha = 0.5) +
-  #cowplot::theme_cowplot() +
   scale_color_age() +
   scale_y_cell_type() +
   NULL
