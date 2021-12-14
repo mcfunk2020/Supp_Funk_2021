@@ -8,6 +8,8 @@ The input files stored in the __raw_data__ directories in other analysis in this
 
 The figure pdf files are stored in the directory: [Graphics](Graphics/).
 
+The numbers behind the waffle plot (Figure 4.a) are in the file [cell_type_stats](Results/cell_type_stats_waffle.tsv)
+
 The following figures can be found in this directory:
 
 1. Figure 1.d
