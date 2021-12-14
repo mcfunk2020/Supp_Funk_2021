@@ -2,11 +2,11 @@
 
 This directory contains the code used to create additional figures for the publication.
 
-The code is available in [additional_figures](Scripts/additional_figures.Rmd)
+The code is available in [additional_figures](Scripts/additional_figures.Rmd).
 
-The input files are partially the input files from the other analysis present in this repository, partially stored in the directory [raw_data](raw_data/)
+The input files stored in the __raw_data__ directories in other analysis in this repository.
 
-The figure pdf files are stored in the directory: [Graphics](Graphics/)
+The figure pdf files are stored in the directory: [Graphics](Graphics/).
 
 The following figures can be found in this directory:
 
