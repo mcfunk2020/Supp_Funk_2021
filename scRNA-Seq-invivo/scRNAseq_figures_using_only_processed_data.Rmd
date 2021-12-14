@@ -15,7 +15,6 @@ params:
   results_dir: "results"
 ---
 ``` {r attach packages , warn=FALSE, message=FALSE, echo=FALSE}
-library(sir)
 library(schelpr)
 
 library(data.table)
