@@ -126,6 +126,31 @@ de_single_cell_dt[cell_type != "pseudo bulk"] %>% ggplot(aes(x = cell_type, y = 
   NULL
 ```
 
+```{r visualize number of degs, fig.height=3.5, fig.width=7.7}
+n_genes_differentially_expressed_per_celltype <- de_single_cell_dt[cell_type != "pseudo bulk"][padj<=0.1][, .N , keyby = cell_type][levels_of_cell_type,][is.na(N), N := 0]
+n_genes_differentially_expressed_per_celltype
+
+dens <- function(x) {
+  dens <- density(x, bw = "SJ")
+  ix <- findInterval(x, dens$x)
+  dens$y[ix]
+}
+
+de_single_cell_dt[cell_type != "pseudo bulk" & padj>0.1, kde := dens(log2FoldChange), by= cell_type]
+de_single_cell_dt[cell_type != "pseudo bulk"] %>% ggplot(aes(x = cell_type, y = -log2FoldChange)) +
+  ggrastr::rasterize(geom_jitter(data = de_single_cell_dt[cell_type != "pseudo bulk"][padj>0.1], aes(x = cell_type, color = kde)), dpi = 600) +
+  scale_color_gradient(name="density", low="gray70", high = "gray20") +
+  ggnewscale::new_scale_color()+
+  ggforce::geom_sina(aes(color = cell_type), data = de_single_cell_dt[cell_type != "pseudo bulk"][padj<=0.1], scale="width") +
+  labs(y = "log2 FC aged / young") +
+  guides(color = "none") +
+  geom_hline(yintercept = 0, color = "gray50", linetype="dashed") +
+  scale_x_cell_type() +
+  scale_color_cell_type() +
+  theme(axis.title.x = element_blank(), aspect.ratio = 2/3) +
+  NULL
+# ggsave("results/deg_count.pdf", width = 7.7, height = 3.5, bg = "transparent")
+```
 
 ```{r volcano pseudo bulk, fig.height=3.5}
 n_highlight <- 20
