@@ -83,6 +83,8 @@ de_single_cell_dt <- de_single_cell_dt_raw %>%
 
 # DotPlot cell types enriched
 
+## Figure 3.a
+
 ```{r dotplot_sc, fig.height=8, fig.width=8}
 
 cell_type_order <-  c("Stem cells", "TA cells", "EC prog.", "Enterocytes", "EECs", "Paneth cells", "Goblet cells", "Tuft cells")
@@ -119,22 +121,6 @@ for (type in seq(1,length(cell_types))) {
 
 names(cell_type_fgsea_df) <- cell_types 
 
-cell_type_all_hallmarks <- cell_type_fgsea_df %>% 
-  bind_rows(.id = "cell_type") %>%
-  mutate(cell_type = factor(cell_type, levels = cell_type_order)) %>% 
-  filter(padj < 0.05) %>% 
-  ggplot(aes(x=cell_type, y=pathway, color=NES, size=-log10(padj))) + 
-  geom_point() + 
-  scale_colour_gradient2(high = "red", low = "blue") + 
-  theme_cowplot() +
-  theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90")) +
-  ylab("Hallmark Pathway") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
-
-cell_type_all_hallmarks
-
-ggsave(cell_type_all_hallmarks, filename = "../Graphics/sc_cell_type_all_hallmarks.pdf", device = "pdf", bg = "white", width = 2600, height = 2600, units = "px")
-
 all_cell_type_selected_hallmarks <- cell_type_fgsea_df %>% 
   bind_rows(.id = "cell_type") %>%
   filter(padj < 0.05) %>% 
@@ -153,28 +139,11 @@ all_cell_type_selected_hallmarks
 
 ggsave(all_cell_type_selected_hallmarks, filename = "../Graphics/all_sc_cell_type_selected_hallmarks.pdf", device = "pdf", bg = "white", width = 2400, height = 2000, units = "px")
 
-cell_type_selected_hallmarks <- cell_type_fgsea_df %>% 
-  bind_rows(.id = "cell_type") %>%
-  filter(padj < 0.05) %>% 
-  filter(pathway %in% list_filter) %>%
-  mutate(pathway = factor(pathway, levels = rev(list_filter))) %>% 
-  filter(cell_type %in% cell_type_dotplot) %>% 
-  mutate(cell_type = factor(cell_type, levels = cell_type_dotplot)) %>% 
-  ggplot(aes(x=cell_type, y=pathway, color=NES, size=-log10(padj))) + 
-  geom_point() + 
-  scale_colour_gradient2(high = "red", low = "blue") + 
-  theme_cowplot() +
-  theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90")) +
-  ylab("Hallmark Pathway") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
-
-cell_type_selected_hallmarks
-
-ggsave(cell_type_selected_hallmarks, filename = "../Graphics/sc_cell_type_selected_hallmarks.pdf", device = "pdf", bg = "white", width = 2400, height = 2000, units = "px")
-
 ```
 
 # Enrichplot
+
+## Figure 1.e and figure 4.d
 
 ```{r enrichplot}
 
@@ -192,21 +161,6 @@ dotplot <- fgsea_hallmarktdy_invivo %>%
 dotplot
 
 ggsave(dotplot, filename = "../Graphics/gsea_dotplot.pdf", device = "pdf", bg = "white", width = 2400, height = 2000, units = "px")
-
-dotplot_inverted <- fgsea_hallmarktdy_invivo %>% 
-    filter(padj < 0.05) %>% 
-    filter(pathway %in% list_filter) %>% 
-    ggplot(aes(y=reorder(pathway, NES), x=NES, color=padj, size = size)) + 
-    geom_point() + 
-    ylab("Pathway") +
-    scale_color_viridis(direction = -1) +
-    theme_cowplot() + 
-    geom_vline(xintercept = 0, size=0.25, linetype='solid', colour="gray70") + 
-    theme(panel.grid.major.y = element_line(size = 0.25, linetype = 'solid', colour = "gray90"))
-
-dotplot_inverted
-
-ggsave(dotplot_inverted, filename = "../Graphics/gsea_dotplot_inverted.pdf", device = "pdf", bg = "white", width = 2400, height = 2000, units = "px")
  
 
 
@@ -233,6 +187,8 @@ ggsave(sidebyside, filename = "../Graphics/gsea_dotplot_sidebyside.pdf", device 
 ```
 
 # Heatmaps
+
+## Figure 1.d and extended data figure 1.d
 
 ```{r heatmap}
 
@@ -312,6 +268,8 @@ pheatmap(data_subset_norm, annotation_col = annotation %>% select(type), color =
 
 # Cell type percentage: waffle chart
 
+## Extended data figure 4.a
+
 In the following plot, each square represents a 0.5% of the cells
 
 ```{r cell_type_waffle}
@@ -354,6 +312,8 @@ ggsave(waffle_plot, filename = "../Graphics/waffle_plot.pdf", device = "pdf", bg
 
 # DotPlot cell types MHC
 
+## Figure 6.c
+
 ```{r dotplot_mhc, fig.height=4, fig.width=6}
 
 genes_set_1 <- c("H2-Aa", "H2-Ab1", "H2-DMa", "H2-DMb1", "H2-Eb1", "Ceacam10", "Cd74", "Ciita")
@@ -377,6 +337,8 @@ ggsave(dotplot_mhc, filename = "../Graphics/dotplot_mhc.pdf", device = "pdf", bg
 
 # Correlation plot
 
+## Figure 4.e
+
 ```{r correlation}
 
 correlation_plot <- bulk_invivo_all_genes %>% 
@@ -394,66 +356,26 @@ ggsave(correlation_plot, filename = "../Graphics/correlation_plot.pdf", device =
 
 # Volcano Plots
 
+## Figure 2.e
+
 ```{r volcano}
 
-shared_21_genes <- c("Cd74", "H2-Ab1", "1700011H14Rik", "H2-Eb1", "Muc2", "Irf1", "H2-Aa", "Ly6e", "Igtp", "Tifa", "H2-DMb1", "Psmb8", "Nrn1", "Prss32", "Ciita", "Sp140", "H2-DMa", "Oat", "H2-Q7", "Parp3", "Sepp1")
-
-volcano_sc_pseudobulk <- de_single_cell_dt_raw %>%
-  filter(contrast == "condition_young_vs_aged") %>% 
-  filter(cell_type == "pseudo bulk") %>% 
-  mutate(signif=if_else(p.adjusted<=0.1,if_else(-estimate>0,"up","down"),"none")) %>%
-  tidyr::drop_na() %>% 
-  ggplot(aes(x=-estimate,y=-log10(p.value),col=signif,name = gene)) +
-    geom_point()+
-    xlab("log2FoldChange") +
-    ylab("-log10(pvalue)") +
-    ggtitle("Aged_Over_Young_Top15_Pseudobulk") +
-    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +    
-    geom_vline(xintercept = 0,lty=2) +
-    geom_label_repel(data = de_single_cell_dt_raw %>% filter(contrast == "condition_young_vs_aged") %>% filter(cell_type == "pseudo bulk") %>% arrange(desc(abs(statistic))) %>% head(15), aes(label=gene), min.segment.length = 0, col="black") +
-    theme_cowplot()
-
-volcano_sc_pseudobulk
-
-ggsave(volcano_sc_pseudobulk, filename = "../Graphics/volcano_sc_pseudobulk.pdf", device = "pdf", bg = "white")
-
-volcano_sc_pseudobulk_21genes <- de_single_cell_dt_raw %>%
-  filter(contrast == "condition_young_vs_aged") %>% 
-  filter(cell_type == "pseudo bulk") %>% 
-  mutate(signif=if_else(p.adjusted<=0.1,if_else(-estimate>0,"up","down"),"none")) %>%
-  tidyr::drop_na() %>% 
-  ggplot(aes(x=-estimate,y=-log10(p.value),col=signif,name = gene)) +
-    geom_point()+
-    xlab("log2FoldChange") +
-    ylab("-log10(pvalue)") +
-    ggtitle("Aged_Over_Young_21_genes_in_common_Pseudobulk") +
-    scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
-    geom_vline(xintercept = 0,lty=2) +
-    geom_label_repel(data = de_single_cell_dt_raw %>% filter(gene %in% shared_21_genes) %>% filter(cell_type == "pseudo bulk"), aes(label=gene), min.segment.length = 0, col="black") +
-    theme_cowplot()
-
-volcano_sc_pseudobulk_21genes
-
-ggsave(volcano_sc_pseudobulk_21genes, filename = "../Graphics/volcano_sc_pseudobulk_21genes.pdf", device = "pdf", bg = "white")
-
-for (type in unique(de_single_cell_dt$cell_type)) {
-  print(type)
-  volcano <- de_single_cell_dt %>%
-  filter(cell_type == type) %>% 
+volcano <- de_single_cell_dt %>%
+  filter(cell_type == "Stem cells") %>% 
   mutate(signif=if_else(padj<=0.1,if_else(-log2FoldChange>0,"up","down"),"none")) %>%
   tidyr::drop_na() %>% 
   ggplot(aes(x=-log2FoldChange,y=-log10(pvalue),col=signif,name = gene)) +
     geom_point()+
     xlab("log2FoldChange") +
-    ggtitle(paste0("Aged_Over_Young_Top20_", type)) +
+    ggtitle("Aged_Over_Young_Top20_Stem cells") +
     scale_color_manual(values = c(maja_blue,b110_grey,maja_red)) +
     geom_vline(xintercept = 0,lty=2) +
-    geom_label_repel(data = de_single_cell_dt %>% filter(cell_type == type) %>% arrange(desc(abs(stat))) %>% head(20), aes(label=gene), min.segment.length = 0, col="black", max.overlaps = Inf) +
+    geom_label_repel(data = de_single_cell_dt %>% filter(cell_type == "Stem cells") %>% arrange(desc(abs(stat))) %>% head(20), aes(label=gene), min.segment.length = 0, col="black", max.overlaps = Inf) +
     theme_cowplot()
-  print(volcano)
+
+volcano
   
-  ggsave(volcano, filename = paste0("../Graphics/volcano_sc_", type, ".pdf"), device = "pdf", bg = "white")
-}
+ggsave(volcano, filename = "../Graphics/volcano_sc_stem_cells.pdf", device = "pdf", bg = "white")
 
 ```
 
