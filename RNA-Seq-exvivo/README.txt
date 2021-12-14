@@ -11,6 +11,11 @@ Extended Fig 6a: bulk_organoids_Volcano_Top15
 
 Fig 5f: bulk_exvivo_Boxplots_GOI
 
+
+The notebook bulk_joint_invivo_exvivo_analysis was used to generate the following figure:
+
+Extended Data Fig 6d + e: PCA_post_batch_correct
+
 ########################################################################################################################################
 
 gene annotation
