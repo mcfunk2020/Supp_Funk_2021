@@ -128,12 +128,29 @@ de_single_cell_dt[cell_type != "pseudo bulk"] %>% ggplot(aes(x = cell_type, y = 
 ```
 
 
-```{r volcano, fig.height=3.5}
+```{r volcano pseudo bulk, fig.height=3.5}
 n_highlight <- 20
 volcano_plot(de_single_cell_dt[cell_type=="pseudo bulk",],
   highlight = rank(- (abs(log2FoldChange)-(lfcSE*qnorm(1-0.1*n_highlight/length(lfcSE)))))<=n_highlight, 
   label_size = 2.5, 
   force_pull = 5, 
+  point.padding = 0.2,
+  force = 70,
+  #nudge_y = 10,
+  color = "black",     # text color
+  bg.color = "white", # shadow color
+  bg.r = 0.2          # shadow radius
+) +
+  facet_wrap("cell_type") +
+  NULL
+```
+
+```{r volcano Stem cells, fig.height=3.5}
+n_highlight <- 20
+volcano_plot(de_single_cell_dt[cell_type=="Stem",],
+  highlight = rank(- (abs(log2FoldChange)-(lfcSE*qnorm(1-0.1*n_highlight/length(lfcSE)))))<=n_highlight,
+  label_size = 2.5,
+  force_pull = 5,
   point.padding = 0.2,
   force = 70,
   #nudge_y = 10,
