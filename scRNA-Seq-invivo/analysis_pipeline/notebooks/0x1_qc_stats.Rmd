@@ -1,0 +1,90 @@
+---
+title: "QC-stats - Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  data_dir: "raw_data"
+  results_dir: "processed_data"
+  qc_stats_dir: "."
+  subset_10x_samples: !r c("9", "11", "12", "17", "18.1", "18.2", "18.3")
+  only_untreated: !r FALSE
+---
+```{r do setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+``` {r imports}
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+cell_types_df <- fread("SI_cell_type_markers.tsv")
+cell_types_df
+```
+
+```{r}
+features_df <- fread("SI_feature_gene_lists.tsv")
+features_df
+```
+
+```{r}
+meta_df <- fread("Sample meta - Sheet1.tsv")
+meta_df[, data_dir := fs::path(data_dir, "cellranger_output")]
+meta_df
+```
+
+
+
+
+```{r load meta data}
+meta_df <- fread("Sample meta - Sheet1.tsv")
+meta_df
+```
+
+
+```{r}
+meta_df <- meta_df[`Tx_run_number` %in% subset_10x_samples]
+
+if (only_untreated) {
+  meta_df <- meta_df[`treatment` %in% "untreated"]
+}
+
+meta_df[, sample_id2 := .I]
+meta_df[, Tx_run_number := factor(Tx_run_number)]
+sample_names <- meta_df[, setNames(sample_name, sample_name)]
+cellranger_metrics_dt <- rbindlist(lapply(sample_names, function(sample_name) fread(fs::path(data_dir, "cellranger_output", sample_name, "outs/metrics_summary.csv"))), idcol = "sample_name")
+cellranger_metrics_dt <- cellranger_metrics_dt[, lapply(.SD, readr::parse_number)][, sample_name := cellranger_metrics_dt[, sample_name]][]
+cellranger_metrics_dt <- meta_df[cellranger_metrics_dt, on = .(sample_name)]
+cellranger_metrics_dt
+```
+
+
+
+```{r load qc stats}
+dt <- fread(fs::path(qc_stats_dir, "qc_stats.tsv"))
+setnames(dt, stringr::str_replace_all(colnames(dt),"`",""))
+dt
+```
+
+```{r merge meta data with qc stats}
+dt <- meta_df[dt, on=.(sample_name), nomatch = NULL]
+dt
+```
+
+
+```{r plot qc stats summary}
+dt[, `:=`(mean_nCount_RNA_of_sample = mean(`mean(nCount_RNA)`), mean_fraction_mito = mean(`mean(fraction_mito)`)), by=.(Tx_run_number)]
+dt %>% ggplot(aes(x=`mean(nCount_RNA)`, y=`mean(fraction_mito)`, color=condition, group=mouse)) + 
+  geom_point(aes(size= nCells)) + 
+  ggrepel::geom_text_repel(aes(label=sample_id), size=3, color="black", alpha=0.5) + 
+  geom_segment(aes(xend=mean_nCount_RNA_of_sample, yend = mean_fraction_mito)) + 
+  geom_point(aes(x=mean_nCount_RNA_of_sample, y = mean_fraction_mito), color ="black") + 
+  #schelpr::scale_x_log() +
+  #schelpr::scale_y_log() +
+  scale_size_area() +
+  sir::scale_color_age() +
+  NULL
+
+```
+

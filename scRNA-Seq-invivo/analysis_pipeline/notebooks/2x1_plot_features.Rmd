@@ -1,0 +1,59 @@
+---
+title: "Ageing & Wnt in an organoid model of the mouse small intestinal stem cell niche - analysis"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  processed_data_dir: "results_human/analysis_with_interaction/2_clustering_and_cell_type_assignment"
+  results_dir: "results"
+---
+
+```{r do setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+features_dt <- fread("SI_feature_gene_lists.tsv")[marker_gene_symbol!=""]
+features_list <- lapply(split(features_dt, by="feature"), `[`, , marker_gene_symbol)
+```
+
+```{r}
+so <- read_rds(fs::path(processed_data_dir,"seurat_object.rds"))
+```
+
+```{r}
+mm <- meta_and_reductions(so)
+mm_wo_facet <- copy(mm)[, c("sample_name", "Tx_run_number", "condition", "treatment") := NULL]
+mm[1:2,]
+```
+
+```{r features}
+for (feature in paste0("`", names(features_list), "`")) {
+  p1 <- mm %>% ggplot(aes_string(x="tSNE_1", y="tSNE_2", color=feature)) + 
+      geom_cell() + 
+      NULL
+    p1 %>% print()
+}
+```
+
+```{r features by Tx_run}
+for (feature in paste0("`", names(features_list), "`")) {
+  p1 <- mm %>% ggplot(aes_string(x="tSNE_1", y="tSNE_2", color=feature)) + 
+      geom_cell(data=mm_wo_facet, color="gray") + 
+      geom_cell() + 
+      facet_grid(.~Tx_run_number) +
+      NULL
+    p1 %>% print()
+}
+```

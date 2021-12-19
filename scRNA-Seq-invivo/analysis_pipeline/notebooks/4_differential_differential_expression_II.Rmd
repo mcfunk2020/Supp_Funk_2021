@@ -1,0 +1,161 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+
+library(progressr)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := factor(Tx_run_number)][]
+meta_dt
+```
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := factor(Tx_run_number)]
+cell_types <-  agg_dt[cell_type!= "pseudo bulk", unique(cell_type)]
+```
+
+```{r one vs sum of rest}
+res_dt_one_vs_sum_of_rest <- local({
+  p <- progressor(along = cell_types)
+  res_dt <- rbindlist(sapply(cell_types, function(cell_type_i) { # cell_type_i <- cell_types[1]
+    this_dt <- agg_dt[cell_type!= "pseudo bulk", .(count = sum(count)), by = .(gene, sample_id, is_cell_type_i = cell_type==cell_type_i)]
+    
+    count_data <- this_dt[, long2sparse(gene, cols = interaction(sample_id, is_cell_type_i), values = count, dimname_cols = NULL, dimname_rows = NULL)]
+    col_data <- unique(this_dt[, .(sample_id_x_is_cell_type_i = interaction(sample_id, is_cell_type_i), sample_id, is_cell_type_i)])[colnames(count_data), on = .(sample_id_x_is_cell_type_i)]
+    col_data <- meta_dt[col_data, on =.(sample_id)]
+    col_data[, is_cell_type_i := as.character(is_cell_type_i)]
+    col_data[, condition := as.character(condition)]
+    col_data[, sample_id := as.character(sample_id)]
+    col_data
+    mm <- model.matrix( ~ condition + sample_id + is_cell_type_i + condition:is_cell_type_i, col_data)
+    mm <- mm[, !(colnames(mm) %in% "conditionyoung"), drop = FALSE]
+    fit1 <- glmGamPoi::glm_gp(as.matrix(count_data), design = mm, col_data = col_data)
+    dde_dt <- glmGamPoi::test_de(fit1, "`conditionyoung:is_cell_type_iTRUE`") %>% data.table()
+    p()
+    dde_dt[, gene := name]
+    dde_dt[, affected_gene := name]
+  }, simplify = FALSE), idcol = "cell_type")
+  setorder(res_dt, pval)
+  res_dt
+})
+res_dt <- res_dt_one_vs_sum_of_rest
+res_dt_one_vs_sum_of_rest[, glob_adj_pval := p.adjust(pval, "BH")]
+setorder(res_dt, pval)
+fwrite(res_dt_one_vs_sum_of_rest, fs::path(results_dir, "dde_one_vs_sum_of_rest_dt.tsv"), sep = "\t")
+res_dt_one_vs_sum_of_rest
+res_dt_one_vs_sum_of_rest[, .(pval = min(p.adjust(pval, "BH"))), by = .(affected_gene)][, adj_pval := p.adjust(pval)][order(pval)]
+```
+
+```{r}
+count_data <- agg_dt[cell_type != "pseudo bulk"][, long2sparse(gene, cols = interaction(sample_id, cell_type), values = count, dimname_cols = NULL, dimname_rows = NULL)]
+col_data <- unique(agg_dt[, .(sample_id_x_cell_type = interaction(sample_id, cell_type), sample_id, cell_type)])[colnames(count_data), on = .(sample_id_x_cell_type)]
+col_data <- meta_dt[col_data, on =.(sample_id)]
+col_data[, cell_type := as.character(cell_type)]
+col_data[, condition := as.character(condition)]
+col_data[, sample_id := as.character(sample_id)]
+col_data
+
+null_fit <- glmGamPoi::glm_gp(as.matrix(count_data), design = ~ sample_id + cell_type, col_data = col_data)
+mm <- model.matrix( ~ condition + sample_id + cell_type + condition:cell_type, col_data)
+mm <- mm[, !(colnames(mm) %in% "conditionyoung"), drop = FALSE]
+alt_fit <- glmGamPoi::glm_gp(as.matrix(count_data), design = mm, col_data = col_data)
+```
+
+
+```{r}
+get_residuals_dt <- function(fit) {
+  res <- residuals(fit)
+  str(res)
+  cor_mat <- cor(res)
+  dimnames(res) <- list(gene = rownames(res), sample_id_x_cell_type = colnames(res))
+  residuals_dt <- sparse2long(res, value_name = "residual")
+  residuals_dt <- col_data[residuals_dt, on = .(sample_id_x_cell_type)]
+  residuals_dt
+}
+
+residuals_null_dt <- get_residuals_dt(null_fit)
+residuals_alt_dt <- get_residuals_dt(alt_fit)
+
+residuals_null_dt[gene %in% "Cd74"] %>% ggplot(aes(x = cell_type, y = residual, color = condition, shape= Tx_run_number)) +
+  geom_point() + #aes(shape = Tx_run_number), size = 2) +
+  facet_wrap("gene", scales = "free", nrow = 2) +
+  scale_color_age() +
+  theme(aspect.ratio = 2/3) +
+  scale_x_cell_type() +
+  NULL -> p1
+p1
+p1 + geom_line(aes(group = sample_id))
+```
+
+
+
+# covariance
+
+```{r, fig.width=10, fig.height=10}
+residuals_dt <- residuals_alt_dt
+genes_ordered <- agg_dt[, .(count = sum(count)), by= .(gene)][order(-count), ][, gene_rank := .I]
+genes_ordered <- genes_ordered[1:2000]
+
+residuals_dt <- residuals_dt[genes_ordered, on =.(gene)]
+correlation_dt <- residuals_dt[residuals_dt, on = .(sample_id, gene, gene_rank), allow.cartesian = TRUE][, .(pearson_cor = cor(residual, i.residual)), by=.(cell_type, i.cell_type, gene, gene_rank)]
+s_dt <- correlation_dt[, mean_cl_boot(pearson_cor), by= .(cell_type, i.cell_type)]
+
+
+with_drop_shadow <- function(..., x_offset = 2, y_offset = 2, sigma = 2) ggfx::with_shadow(..., x_offset=x_offset, y_offset=y_offset, sigma=sigma)
+
+#ggplot(data.table(a=1,b=2), aes(a,b,)) + with_drop_shadow(geom_point(color="red")) + ggfx::with_outer_glow(geom_point(data=data.table(a=2,b=2), color ="green"), colour="white")
+correlation_dt[, cell_type_i := factor(cell_type, levels = sir:::levels_of_cell_type, labels =sir:::labels_of_cell_type)]
+correlation_dt[, cell_type_j := factor(i.cell_type, levels = sir:::levels_of_cell_type, labels =sir:::labels_of_cell_type)]
+s_dt <- correlation_dt[, mean_cl_boot(pearson_cor), by= .(cell_type_i, cell_type_j)]
+
+correlation_dt[cell_type_i !=cell_type_j] %>% ggplot(aes(x=gene_rank, y=pearson_cor)) +
+  ggrastr::rasterize(ggpointdensity::geom_pointdensity(), dpi = 300) +
+  ggnewscale::new_scale_color() +
+  facet_grid(cell_type_i ~ cell_type_j) +
+  geom_hline(yintercept=0, color="gray") +
+  #geom_rect(data=s_dt[cell_type_i !=cell_type_j], aes(ymin=ymin, ymax=ymax, xmin=-Inf,xmax=Inf), inherit.aes = FALSE, fill="red", alpha=0.3) +
+  geom_hline(data=s_dt[cell_type_i !=cell_type_j], aes(yintercept=stage(y, after_scale = yintercept - 0.02)), linetype="dashed", color = "black", alpha=0.3) +
+  geom_hline(data=s_dt[cell_type_i !=cell_type_j], aes(yintercept=y, color = "average"), linetype="dashed") +
+  geom_smooth(color="black", alpha=0.3, position = position_nudge(0.02,-0.02)) +
+  geom_smooth(aes(color = "smooth")) +
+  #with_drop_shadow(geom_smooth(aes(color = "smooth"))) +
+  scale_color_manual("", values = c("black", "orange")) +
+  labs(x = "gene rank (decreasing average expression)", y = "Pearson correlation of residuals") +
+ # scale_x_discrete(limits=genes_ordered, guide = guide_axis("gene (ordered by mean expression (decreasingly)")) +
+  theme(axis.text.x=element_blank(),
+      axis.ticks.x=element_blank()
+      ) +
+  NULL
+ggsave(fs::path(results_dir, "correlation.svg"), width = 10, height = 10, bg = 'transparent')
+
+```
+
+```{r save results table}
+fwrite(res_dt_one_vs_sum_of_rest, fs::path(results_dir, paste0("DDE_samples_as_replicates.tsv")), sep="\t")
+```

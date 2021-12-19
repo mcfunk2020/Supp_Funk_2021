@@ -1,0 +1,7 @@
+sample_id	sample_name	line	treatment	condition	mouse	Tx_run_number	sample_type	sample_name_ILSE
+Tx18.1_1	Tx18_1_1_Y	M1Y	untreated	young	malala	18.1	in_vivo	Tx18.1_1_Y
+Tx18.1_2	Tx18_1_2_A	M2A	untreated	aged	gertrude	18.1	in_vivo	Tx18.1_2_A
+Tx18.2_1	Tx18_2_1_Y	M3Y	untreated	young	rita	18.2	in_vivo	Tx18.2_1_Y
+Tx18.2_2	Tx18_2_2_A	M4A	untreated	aged	frances	18.2	in_vivo	Tx18.2_2_A
+Tx18.3_1	Tx18_3_1_Y	M5Y	untreated	young	donna	18.3	in_vivo	Tx18.3_1_Y
+Tx18.3_2	Tx18_3_2_A	M6A	untreated	aged	elizabeth	18.3	in_vivo	Tx18.3_2_A

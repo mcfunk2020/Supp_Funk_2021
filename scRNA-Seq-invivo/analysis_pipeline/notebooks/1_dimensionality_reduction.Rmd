@@ -1,0 +1,142 @@
+---
+title: "Integration of different batches"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  processed_data_dir: "results_ci_human/analysis_in_vivo/0_qc_filtering"
+  results_dir: "results/integration"
+---
+
+```{r do setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r load gene lists}
+cell_types_dt <- fread("SI_cell_type_markers.tsv")[marker_gene_symbol!=""]
+cell_types_list <- lapply(split(cell_types_dt, by="cell_type"), `[`, , marker_gene_symbol)
+
+features_dt <- fread("SI_feature_gene_lists.tsv")[marker_gene_symbol!=""]
+features_list <- lapply(split(features_dt, by="feature"), `[`, , marker_gene_symbol)
+
+
+inflammaging_singature_dt <- fread("inflammaging_signature.tsv")[gene_symbol !=""]
+inflammaging_singature_genes <- inflammaging_singature_dt[, unique(gene_symbol)]
+```
+
+
+```{r load data}
+so <- read_rds(fs::path(processed_data_dir, "seurat_object.rds"))
+```
+
+# Select HVGs
+
+```{r determine HVGs based on sample with highest quallity}
+#Select highly variable genes based on best sample alone to bias against genes with large batch (or condition) effects,
+best_sample_id <- data.table(so@meta.data)[, .(sample_quality_score=sqrt(.N)* mean(sqrt(nCount_RNA))), by= sample_id][which.max(sample_quality_score), sample_id]
+cat("Only the best sample (", best_sample_id, ") is used to determine HVGs.")
+so_best_sample <- so %>% subset(sample_id == best_sample_id)
+so_best_sample %<>% FindVariableFeatures()
+VariableFeatures(so) <- VariableFeatures(so_best_sample) 
+
+# add marker genes to HVGs, such that they end up in the integrated dataset
+VariableFeatures(so) <- unique(c(VariableFeatures(so), unlist(c(cell_types_list, features_list, sir::cc.genes_mmusculus))))
+```
+
+# Perform integration 
+To remove batch effects (not condition effects, since its a balanced design) for cell type assignment use Seurat's Integration function.
+
+```{r normalize and scale}
+so %<>% NormalizeData()
+# regress out-batch effects linearly before attempting integration
+so %<>% ScaleData(vars.to.regress = if(length(unique(so$Tx_run_number))>1) "Tx_run_number" else NULL) 
+```
+
+```{r perform integration, timeit = TRUE}
+if(length(unique(so$Tx_run_number))>1) {
+  sos <- SplitObject(so, split.by = "Tx_run_number")
+  anchors <- FindIntegrationAnchors(object.list = sos)
+  so <- IntegrateData(anchorset = anchors)
+  rm(sos)
+}
+```
+
+```{r compute modules scores}
+so[[c("ccs","ccg2m")]] <- pca_scores(GetAssayData(so, slot = "data"),  sir::cc.genes_mmusculus)
+so@meta.data[, names(cell_types_list)] <- pca_scores(GetAssayData(so, slot = "data"), cell_types_list)
+so@meta.data[, names(features_list)] <- pca_scores(GetAssayData(so, slot = "data"), features_list)
+
+so %<>% AddModuleScore(features = list(inflammaging = intersect(inflammaging_singature_genes, rownames(so$RNA))), assay = "RNA", name= "inflammaging_score_")
+# "rename" column:
+so$inflammaging_score <- so$inflammaging_score_1 
+so$inflammaging_score_1 <- NULL
+# and re-scale from 0 to 1
+so$inflammaging_score_scaled <- scales::rescale(so$inflammaging_score)
+```
+
+```{r define helper function to inspect reductions}
+test_plots <- function(so, reduction) {
+  mm <- so %>% schelpr::meta_and_reductions()
+  interesting_features <- c("Enterocytes","ccg2m", "Stem cells", "condition", "Tx_run_number")
+  interesting_features <- interesting_features[interesting_features %in% colnames(mm)]
+  for(color_by in interesting_features) {
+    p1 <- mm %>% ggplot(aes_string(x=paste0(reduction, "_1"), y=paste0(reduction, "_2"), color=paste0("`", color_by, "`"))) + 
+      geom_cell() + 
+      NULL
+    print(p1)
+  }
+}
+```
+
+```{r scale integrated data and run pca}
+so %<>% ScaleData()
+so %<>% RunPCA(ndims.print = 1, npcs = 20)
+so %>% ElbowPlot() + expand_limits(y = 0)
+```
+
+```{r run umap, timeit = TRUE}
+so %<>% RunUMAP(dims = 1:10, min.dist = 0.5)
+so %>% test_plots("UMAP")
+```
+
+```{r run tSNE embedding with UMAP initialization, timeit = TRUE}
+y_init <- Reductions(so, "umap")@cell.embeddings
+y_init <- t(t(y_init) / matrixStats::colSds(y_init)) * 30
+
+so %<>% RunTSNE(dims = 1:10, Y_init = y_init,  num_threads = 8)
+so %>% test_plots("tSNE")
+```
+
+# inspection of integration
+
+```{r}
+mm <- so %>% schelpr::meta_and_reductions()
+mm_wo_facet <- copy(mm)[, c("sample_name", "Tx_run_number", "condition") := NULL]
+mm
+```
+
+
+```{r by-Tx-run}
+for (cell_type in c(paste0("`", c(names(cell_types_list)), "`"), "log(nCount_RNA)", "ccg2m", "ccs", "fraction_mito",  "sample_name", "condition")) {
+  p1 <- mm %>% ggplot(aes_string(x="tSNE_1", y="tSNE_2", color=cell_type)) + 
+      geom_cell(data=mm_wo_facet, color="gray") +
+      geom_cell() + 
+      facet_grid(.~Tx_run_number)
+  p1 %>% print()
+}
+```
+
+# saving results
+```{r save integerated seurat object for use in downstream analysis}
+write_rds(so, fs::path(results_dir, "seurat_object.rds"))
+```

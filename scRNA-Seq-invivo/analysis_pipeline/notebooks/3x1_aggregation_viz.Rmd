@@ -1,0 +1,324 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  processed_data_dir: "results_ci_human/analysis_in_vivo/2x2_manual_cell_type_assignent"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+library(patchwork)
+library(colorspace)
+library(Seurat)
+
+library(ComplexHeatmap)
+```
+
+```{r}
+dt <- fread(fs::path(processed_data_dir, "meta_and_reductions.tsv"), sep= "\t")
+```
+
+```{r}
+agg_dt <- fread(fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep= "\t")
+```
+
+```{r}
+so <- readRDS(fs::path(processed_data_dir, "seurat_object.rds")) 
+```
+
+```{r}
+levels_of_sample_id <- dt[, sort(unique(sample_id))]
+labels_of_sample_id <- levels_of_sample_id
+colors_of_sample_id <- dicrete_colors[[3]][seq_along(levels_of_sample_id)] #dicrete_colors[[which(sapply(dicrete_colors, length) >= length(levels_of_sample_id))[1]]][seq_along(levels_of_sample_id)]
+names(colors_of_sample_id) <- levels_of_sample_id
+
+#' @export
+#' @import ggplot2
+scale_color_sample_id <- function(
+  name = "cell type",
+  breaks = levels_of_sample_id,
+  labels = labels_of_sample_id,
+  values = colors_of_sample_id,
+  na.value = "#808080",
+  guide = guide_legend(override.aes = list(size = 1)),
+  ...
+) scale_color_manual(
+  name = name,
+  breaks = breaks,
+  #limits = breaks,
+  labels = labels,
+  values = values,
+  na.value = na.value,
+  guide = guide,
+  ...
+)
+```
+
+
+```{r}
+sso <- so[, sample(Cells(so), pmin(1000, ncol(so)))] 
+x <- t(GetAssayData(sso, slot = "scale.data"))
+x <- x[, colSums(x)>0]
+#x <- x[, sample(ncol(x), 500)]
+sdt <- sso[[c("sample_id", "condition", "cell_type")]]
+
+range_ <- max(abs(range(x)))
+
+# Heatmap(
+#   sso@reductions$pca@cell.embeddings,
+#   #row_split = interaction( sdt$sample_id, sdt$condition), #sdt$cell_type,
+#   
+#   cluster_rows = TRUE,
+#   name = "pr.com. expr",
+#   column_title = paste0("PCs"),
+#   show_column_names = FALSE, 
+#   width = unit(8, "cm"),
+#   heatmap_legend_param = list(title = "PC value"),
+#   show_row_names = FALSE,
+#   show_row_dend = FALSE,
+#   show_column_dend = FALSE,
+#   circlize::colorRamp2(c(-3,0,3), c("blue", "#EEEEEE", "red"))# col = viridis::viridis(111)
+# )  +
+Heatmap(
+  x,
+  use_raster = TRUE,
+  row_split = interaction(sdt$cell_type, sdt$sample_id, sdt$condition), #sdt$cell_type,
+  gap = unit(0.1, "mm"),
+  cluster_row_slices = TRUE,
+  row_title_gp = gpar(col = "#FFFFFF00"),
+  cluster_rows = TRUE,
+  name = "scaled expression",
+  column_title = paste0("scaled expression of ", ncol(x), " selected genes"),
+  cluster_columns = TRUE,
+  show_column_names = FALSE, 
+  width = unit(8, "cm"),
+  heatmap_legend_param = list(title = "Scaled expr"),
+  show_row_names = FALSE,
+  #show_row_dend = FALSE,
+  show_column_dend = FALSE,
+  circlize::colorRamp2(c(-3,0,3), c("blue", "#EEEEEE", "red"))# col = viridis::viridis(111)
+) + 
+ Heatmap(
+   sdt$sample_id, name = "sample id", 
+   col = colors_of_sample_id,
+   #   top_annotation = HeatmapAnnotation(summary = anno_summary(height = unit(2, "cm"))),
+   show_row_names = FALSE,
+   width = unit(2.5, "mm")
+) +
+Heatmap(
+  sdt$condition, name = "age",
+  col = sir:::age_colors,
+  #   top_annotation = HeatmapAnnotation(summary = anno_summary(height = unit(2, "cm"))),
+  show_row_names = FALSE,
+  width = unit(5, "mm")
+) +
+ Heatmap(
+   sdt$cell_type,
+   name = "cell type",
+   #   top_annotation = HeatmapAnnotation(summary = anno_summary(height = unit(2, "cm"))),
+   show_row_names = FALSE,
+   col = setNames(sir:::colors_of_cell_type, sir:::levels_of_cell_type),
+   width = unit(10, "mm")
+)
+
+```
+```{r}
+agg_dt[, sample_id_cell_type := interaction(sample_id, cell_type)]
+y <- with(agg_dt[cell_type != "pseudo bulk"][gene %in% colnames(x)], as.matrix(long2sparse(rows = sample_id_cell_type, cols = gene, values = CPM)))
+meta_dt <- unique(agg_dt, by = "sample_id_cell_type")[data.table(sample_id_cell_type = rownames(y)), on =.(sample_id_cell_type)]
+y <- y[, colnames(x)]
+y <- log1p(y*100) # per 10 k reads / cell mapped
+y <- t(t(y)-colMeans(y))
+y <- t(t(y)/matrixStats::colSds(y))
+
+str(y)
+
+Heatmap(
+  y,
+  use_raster = FALSE,
+  row_split = interaction(meta_dt$cell_type), #sdt$cell_type,
+  gap = unit(0.1, "mm"),
+  cluster_row_slices = TRUE,
+  row_title_gp = gpar(col = "#FFFFFF00"),
+  cluster_rows = TRUE,
+  name = "scaled expression",
+  column_title = paste0("scaled expression of ", ncol(x), " selected genes"),
+  cluster_columns = TRUE,
+  show_column_names = FALSE, 
+  width = unit(8, "cm"),
+  heatmap_legend_param = list(title = "Scaled expr"),
+  show_row_names = FALSE,
+  #show_row_dend = FALSE,
+  show_column_dend = FALSE,
+  circlize::colorRamp2(c(-3,0,3), c("blue", "#EEEEEE", "red"))# col = viridis::viridis(111)
+) + 
+ Heatmap(meta_dt$sample_id, name = "sample id", 
+         col = colors_of_sample_id,
+ #   top_annotation = HeatmapAnnotation(summary = anno_summary(height = unit(2, "cm"))),
+  show_row_names = FALSE,
+    width = unit(2.5, "mm")) +
+  Heatmap(meta_dt$condition, name = "age", 
+         col = sir:::age_colors,
+ #   top_annotation = HeatmapAnnotation(summary = anno_summary(height = unit(2, "cm"))),
+  show_row_names = FALSE,
+    width = unit(5, "mm")) +
+ Heatmap(meta_dt$cell_type, name = "cell type", 
+ #   top_annotation = HeatmapAnnotation(summary = anno_summary(height = unit(2, "cm"))),
+  show_row_names = FALSE,
+ col = setNames(sir:::colors_of_cell_type, sir:::levels_of_cell_type),
+    width = unit(10, "mm"))
+
+```
+
+
+```{r tSNE_by_sample_id}
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=sample_id)) +
+  geom_cell() +
+  scale_color_sample_id() +
+  NULL
+```
+
+```{r tSNE_by_cell_type}
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=cell_type)) +
+  geom_cell() +
+  scale_color_cell_type() +
+  NULL
+```
+
+```{r tSNE_by_age}
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=condition)) +
+  geom_cell() +
+  scale_color_age() +
+  NULL
+```
+
+
+
+```{r}
+s_dt <- dt[, c(lapply(.SD, mean), list(n_cells=.N)), .SDcols = c("tSNE_1", "tSNE_2"), by = .(sample_id, cell_type, condition)]
+
+```
+
+
+
+```{r tSNE_by_sample_id agg}
+s_dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=sample_id, size = n_cells)) +
+  geom_point() +
+  scale_color_sample_id() +
+  NULL
+```
+
+```{r tSNE_by_cell_type agg}
+s_dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=cell_type, size = n_cells)) +
+  geom_point() +
+  scale_color_cell_type() +
+  NULL
+```
+
+```{r tSNE_by_age agg}
+s_dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=condition, size = n_cells)) +
+  geom_point() +
+  scale_color_age() +
+  NULL
+```
+```{r}
+DefaultAssay(so) <- "RNA"
+interesting_genes <- c("AI467606", "Cryl1", "Baz2a", "Ppp1r14d", "Fcho2", "Marc2", "Itgam")
+mean(interesting_genes %in% rownames(GetAssayData(so, slot = "data")))
+interesting_genes[!(interesting_genes %in% rownames(so))]
+interesting_genes <- interesting_genes[interesting_genes %in% rownames(so)]
+interesting_genes
+```
+
+
+```{r}
+x <- t(as.matrix(GetAssayData(so, slot = "data")[interesting_genes,, drop =FALSE]))
+dimnames(x) <- setNames(dimnames(x), c("cell", "gene")) 
+mm <- sparse2long(x+1, value_name = "log1pCP10k")
+mm[, log1pCP10k:=log1pCP10k-1]
+mm <- mm[meta_and_reductions(so), on = "cell"]
+mm
+```
+
+
+```{r, fig.width=12}
+mm[, sd := sd(log1pCP10k), by = .(gene, sample_id, cell_type)]
+mm[, {
+  
+  # marker_gene <- sample(marker_genes, 1)
+  p <- ggplot(.SD[sd>0], aes(x=cell_type, color = condition, group = interaction(sample_id,cell_type), y = log1pCP10k)) + 
+    #geom_violin(position=position_dodge()) +
+    #geom_point(position=position_dodge2(width =0.3)) +
+    ggforce::geom_sina(scale="width", maxwidth =0.8) +
+    geom_jitter(data = .SD[sd==0], height = 0) +
+    facet_grid(sample_id~.) +
+    scale_y_log1p() +
+    #scale_x_cell_type() +
+    theme(aspect.ratio = 1/8) +
+    scale_color_age() +
+    ggtitle(paste0(gene))
+  print(p)
+  NULL
+}, by = gene] %>% invisible()
+
+```
+```{r}
+this_dodge <- position_dodge(width=0.2)
+agg_dt[gene %in% interesting_genes][, gene2:=gene][, {
+  .SD %>% ggplot(aes(x = cell_type, y = CPM, ymin = CPM_lower, ymax = CPM_upper, color = condition, group = interaction(cell_type, sample_id))) +
+    scale_x_cell_type() +
+    facet_wrap("gene", scales = "free_y", nrow = 2) +
+    scale_y_log1p() +
+    scale_color_age()+
+    coord_cartesian(ylim = range(CPM)*c(0.9,1.1)) +
+    #ggtitle(paste0(gene)) +
+    theme(aspect.ratio = 2/3) +
+    NULL -> p1
+  print(p1 + geom_point(size = 2, position = this_dodge) )
+  p1 %<>% `+`(geom_line(aes(group = sample_id, linetype = sample_id), position = this_dodge)) 
+  p1 %<>% `+`(geom_point(aes(shape = sample_id), size = 2, position = this_dodge))
+  print(p1)
+  print(p1 + geom_errorbar(width = 0.3, position = this_dodge, alpha =0.2) )
+  
+  NULL
+}, by= .(gene2)]
+
+```
+
+```{r}
+sample_meta <- agg_dt[,.N, by=.(Tx_run_number, sample_id, condition)]
+scale_shape_sample_id <- function(..., values = sample_meta[, c(16, 15, 17)[as.integer(factor(Tx_run_number))]], breaks = sample_meta[, sample_id]) scale_shape_manual(values = values, breaks=breaks, ...)
+scale_linetype_sample_id <- function(..., values = sample_meta[, as.integer(factor(Tx_run_number))], breaks = sample_meta[, sample_id]) scale_linetype_manual(values = values, breaks=breaks, ...)
+
+this_dodge <- position_dodge(width=0.2)
+agg_dt[gene %in% interesting_genes][, gene2:=gene][, {print(
+  .SD %>% ggplot(aes(x = cell_type, y = CPM, ymin = CPM_lower, ymax = CPM_upper, color = condition, group = interaction(cell_type, sample_id), fill =sample_id)) +
+    geom_point(aes(shape = sample_id), size = 2, position = this_dodge) +
+    geom_errorbar(width = 0.3, position = this_dodge, alpha =0.3) +
+    geom_line(aes(group = sample_id, linetype = sample_id), position = this_dodge) +
+    scale_x_cell_type() +
+    facet_wrap("gene", scales = "free_y", nrow = 2) +
+    scale_y_log1p() +
+    scale_color_age() +
+    scale_shape_sample_id() +
+    scale_linetype_sample_id() +
+    theme(aspect.ratio = 2/3) +
+    NULL
+  )
+  NULL
+}, by= gene2] %>% invisible()
+```
+
+

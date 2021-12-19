@@ -1,0 +1,214 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_untreated_with_in_vivo/3_aggregation"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(IHW)
+library(DESeq2)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := as.character(Tx_run_number)][]
+meta_dt
+```
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := as.character(Tx_run_number)]
+agg_dt[, cell_type := factor(cell_type, levels = unique(c("pseudo bulk", cell_type)))]
+```
+
+```{r}
+countData <- agg_dt[, long2sparse(gene, cols = interaction(sample_id, cell_type), values = count, dimname_cols = NULL, dimname_rows = NULL)]
+colData <- unique(agg_dt[, .(sample_id_x_cell_type = interaction(sample_id, cell_type), sample_id, cell_type)])[colnames(countData), on = .(sample_id_x_cell_type)]
+colData <- meta_dt[colData, on =.(sample_id)]
+colData
+```
+
+
+```{r}
+size_factors <- Matrix::colSums(countData)
+gene_mean <- Matrix::rowMeans(countData)
+countData <- countData[rank(-gene_mean) <= 5000, ]
+is_pseudo_bulk <- colData[, cell_type == "pseudo bulk"]
+
+dds <- DESeq2::DESeqDataSetFromMatrix(countData[, is_pseudo_bulk], data.frame(colData[is_pseudo_bulk,], row.names = colData[is_pseudo_bulk, sample_id_x_cell_type]), 
+                                      design = ~ condition + condition:sample_type + Tx_run_number:sample_type + sample_type) # + Tx_run_number sample_type
+
+colData[, Tx_run_within_sample_type := as.integer(factor(as.character(Tx_run_number))), by= .(sample_type)]
+colData[, Tx_run_within_sample_type := as.character(factor(Tx_run_within_sample_type))]
+colData_ <- data.frame(colData[is_pseudo_bulk,], row.names = colData[is_pseudo_bulk, sample_id_x_cell_type], stringsAsFactors = FALSE)
+
+model_matrix <- model.matrix(data = colData_, ~ condition + condition:sample_type + Tx_run_within_sample_type:sample_type)
+model_matrix <- model_matrix[, colSums(model_matrix)>0]
+
+dds <- DESeq2::DESeqDataSetFromMatrix(countData[, is_pseudo_bulk], colData = colData_, design = )
+# Tx_run_number is completely confounded with sample_type
+
+DESeq2::sizeFactors(dds) <- size_factors[is_pseudo_bulk]
+dds <- DESeq2::estimateDispersions(dds, fitType = "local")
+dds <- DESeq2::nbinomWaldTest(dds, useT=TRUE)
+
+
+de_overall_dt <- DESeq2::results(dds, name = "condition_young_vs_aged", cooksCutoff = FALSE,  filterFun=ihw)
+de_overall_dt <- as.data.table(de_overall_dt, keep.rownames = "affected_gene")[, coef := "condition_young_vs_aged"]
+de_overall_dt[, qadj := schelpr::adjust_q_vals(q_vals = padj, sets = coef)]
+setorder(de_overall_dt, qadj, padj, pvalue)
+de_overall_dt
+
+de_dt <-
+  rbindlist(lapply(DESeq2::resultsNames(dds) %>% str_subset("^conditionyoung\\."), function(coef) {
+    res <- DESeq2::results(dds, name = coef, cooksCutoff = FALSE,  filterFun=ihw) #de_overall_dt[,pvalue]
+    as.data.table(res, keep.rownames = "affected_gene"
+    )[, coef := coef]
+  }))
+de_dt[, sample_type := stringr::str_match(coef, "^conditionyoung\\.(.*)$")[,2]]
+de_dt[, qadj := schelpr::adjust_q_vals(q_vals = padj, sets = coef)]
+
+de_dt[de_overall_dt, overall_pvalue := i.pvalue,  on = .(affected_gene)]
+
+de_dt[, padj2 := IHW::adj_pvalues(ihw(pvalues = pvalue, covariates = log(overall_pvalue), alpha = 0.1)), by = .(sample_type)]
+de_dt[, qadj2 := schelpr::adjust_q_vals(q_vals = padj2, sets = coef)]
+setorder(de_dt, qadj, padj, pvalue)
+de_dt
+setorder(de_dt, qadj2, padj2, pvalue)
+de_dt
+```
+
+```{r}
+dds <- DESeq2::DESeqDataSetFromMatrix(countData[, is_pseudo_bulk], data.frame(colData[is_pseudo_bulk,], row.names = colData[is_pseudo_bulk, sample_id_x_cell_type]), design = ~ condition + condition:sample_type + cell_type + cell_type:sample_type + cell_type:condition) # + Tx_run_number
+# Tx_run_number is completely confounded with sample_type
+
+DESeq2::sizeFactors(dds) <- size_factors
+dds <- DESeq2::estimateDispersions(dds, fitType = "local")
+dds <- DESeq2::nbinomWaldTest(dds, useT=TRUE)
+
+
+de_overall_dt <- DESeq2::results(dds, name = "condition_young_vs_aged", cooksCutoff = FALSE,  filterFun=ihw)
+de_overall_dt <- as.data.table(de_overall_dt, keep.rownames = "affected_gene")[, coef := "condition_young_vs_aged"]
+de_overall_dt[, qadj := schelpr::adjust_q_vals(q_vals = padj, sets = coef)]
+setorder(de_overall_dt, qadj, padj, pvalue)
+de_overall_dt
+
+de_dt <-
+  rbindlist(lapply(DESeq2::resultsNames(dds) %>% str_subset("^conditionyoung\\."), function(coef) {
+    res <- DESeq2::results(dds, name = coef, cooksCutoff = FALSE,  filterFun=ihw) #de_overall_dt[,pvalue]
+    as.data.table(res, keep.rownames = "affected_gene"
+    )[, coef := coef]
+  }))
+de_dt[, sample_type := stringr::str_match(coef, "^conditionyoung\\.(.*)$")[,2]]
+de_dt[, qadj := schelpr::adjust_q_vals(q_vals = padj, sets = coef)]
+
+de_dt[de_overall_dt, overall_pvalue := i.pvalue,  on = .(affected_gene)]
+
+de_dt[, padj2 := IHW::adj_pvalues(ihw(pvalues = pvalue, covariates = log(overall_pvalue), alpha = 0.1)), by = .(sample_type)]
+de_dt[, qadj2 := schelpr::adjust_q_vals(q_vals = padj2, sets = coef)]
+setorder(de_dt, qadj, padj, pvalue)
+de_dt
+setorder(de_dt, qadj2, padj2, pvalue)
+de_dt
+```
+
+```{r save results table}
+fwrite(de_dt, fs::path(results_dir, paste0("DDE_sample_type.tsv")), sep="\t")
+```
+
+```{r}
+de_dt[, rank:=rank(qadj), by=.(sample_type, coef)][qadj < 0.1][rank<5]
+```
+
+
+
+```{r}
+de_dt[, {
+  cat(paste0(coef, ": ", sample_type), "\n")
+  print(.SD[qadj<0.1])
+  
+  p <- .SD%>%
+    ggplot(aes(y=-log10(pvalue), x=log2FoldChange, color=qadj)) + 
+    scale_color_viridis_c(trans="sqrt", limits = 0:1) +
+    geom_point() +
+    ggrepel::geom_text_repel(aes(label=affected_gene), data=.SD[order(qadj, padj, pvalue)[1:20]], color="black") +
+    ggtitle(paste0(coef)) +
+    NULL
+  print(p)
+  NULL
+}, by=.(sample_type, coef)]
+```
+
+
+
+## effect size visualization of the strongest treatment effect
+Shows the expression of Gip for each sample over treatment and age. 
+Samples coming from the same line are connected by a line.
+Gip expression is induced upon Wnt treatment, and, in this case, more strongly in young mice.
+1+cpm = Gip counts per million counts of sample plus one pseudocount
+
+```{r example genes, fig.width=17.6, fig.height = 3}
+
+alpha <- 0.83
+interesting_genes <- de_dt[, .SD[order(qadj, padj, pvalue)[1],], by = .(coef)][, affected_gene] 
+samples_x_cell_types_dt <- unique(agg_dt, by=c("sample_id","cell_type"))[,c("cell_type", "total_count_in_sample_x_cell_type", colnames(meta_dt)), with=FALSE]
+
+for (gene_ in interesting_genes) {
+  # gene_ <-  "Defa17"
+  
+  samples_x_cell_types_dt <- unique(agg_dt, by=c("sample_id","cell_type"))[,c("cell_type", "total_count_in_sample_x_cell_type", colnames(meta_dt)), with=FALSE]
+  
+  
+  sub_dt <- agg_dt[gene==gene_] 
+  sub_dt <- sub_dt[samples_x_cell_types_dt, on = intersect(colnames(sub_dt), colnames(samples_x_cell_types_dt))]
+  sub_dt[is.na(count), count:=0]
+  sub_dt
+  
+  sub_dt %<>% ebbr::add_ebb_estimate(count, total_count_in_sample_x_cell_type, cred_level = alpha) %>% data.table
+  sub_dt[, `:=`(CPM_estimate_eb = .fitted*1E6,
+                CPM_lower_eb = .low*1E6,
+                CPM_upper_eb = .high*1E6
+  )]
+  these_limits <- sub_dt[gene==gene_, c(min(CPM_estimate_eb)/2, max(CPM_estimate_eb)*2)]
+  
+  dodge_width <- 0.8
+  
+  expression_plot <- ggplot(sub_dt, aes(x=condition, y=CPM_estimate_eb)) + 
+    facet_grid(. ~ cell_type, scales="free", labeller = label_wrap_gen(width=20)) +
+    geom_pointrange(aes(group = interaction(condition, Tx_run_number), ymin=CPM_lower_eb, ymax=CPM_upper_eb), linetype="solid", position=position_dodge2(dodge_width)) +
+    geom_line(aes(group = interaction(Tx_run_number)), position=position_dodge2(dodge_width)) +
+    stat_summary(aes(group=interaction(cell_type, condition, sample_type), color = sample_type), 
+                 fun.data = function(x) exp( mean_cl_normal(log1p(x), conf.int=alpha))-1, 
+                 geom = "crossbar") +
+    schelpr::scale_y_log1p() +
+    coord_cartesian(ylim=these_limits) +
+    ggtitle(paste0(gene_, "")) + 
+    theme(axis.title.x=element_blank()) +
+    scale_x_age() +
+    NULL
+  
+  expression_plot %>% print
+}
+```
+
+

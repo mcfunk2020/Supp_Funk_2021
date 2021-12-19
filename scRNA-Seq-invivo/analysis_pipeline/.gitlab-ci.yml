@@ -1,0 +1,41 @@
+before_script:
+  - pwd
+  - /usr/bin/env bash
+  - ln -s $DATA_BASE_DIR/raw_data raw_data
+  - ln -s $DATA_BASE_DIR/results_ci results
+  - ln -s $DATA_BASE_DIR/results_ci_human results_human
+  - find results_human -delete -mindepth 1
+#  - module load R/3.5.1
+  - echo $SHELL
+  - source ~/.bash_profile
+  - echo "test"
+  - env | grep "R_"
+  - Rscript -e 'if (!require("remotes")) install.packages("remotes", repos = "https://cloud.r-project.org"); gitcreds::gitcreds_get()'
+
+
+stages:
+  - build
+  - test
+  - deploy
+
+testci:
+  stage: build
+  tags:
+   - lsf
+  script:
+    - echo hello
+
+build:
+  stage: build
+  tags:
+   - lsf
+  script:
+    - make install
+
+all:
+  stage: test
+  tags:
+   - lsf
+  script:
+    - bsub -I -n 2 -R "affinity[core(4)] rusage[mem=60G]" "make -j 4 --keep-going all"  || { make --dry-run 2> /dev/null | perl -nle '/input = structure\((\".*\.Rmd\"), .*params \= (.*), clean \=/; $notebook = $1; $cmd = $2; $cmd =~ s|(?<! results_dir = structure\(\")results/|results_ci/|g ; print "$notebook:\nlist2env($cmd, globalenv())\n" if $notebook' && false ; }
+    - make copy_processed_data

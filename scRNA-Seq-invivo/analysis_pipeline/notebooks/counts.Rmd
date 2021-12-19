@@ -1,0 +1,76 @@
+---
+title: "Untitled"
+author: "Jan"
+date: "4/14/2019"
+output: html_document
+---
+
+```{r}
+si@assays$RNA@meta.features$n_cells <- Matrix::rowSums(si@assays$RNA@counts>0)
+useful_genes = si@assays$RNA@data@Dimnames[[1]][si@assays$RNA@meta.features$n_cells > 5]
+marker_gene_list <-
+  cell_types_df[cell_types_df$marker_gene_symbol %in% useful_genes,]  %>% 
+  plyr::dlply("cell_type", function(x) x$marker_gene_symbol)
+
+si <- Seurat::AddModuleScore(si, marker_gene_list, 
+                     pool = useful_genes, 
+                     name=make.names(names(marker_gene_list)),
+                     nbin=5)
+
+si@meta.data[,paste("a1", names(marker_gene_list))] <- sir:::get_scores(si@assays$RNA@scale.data, marker_gene_list)
+si@meta.data[,paste("a2", names(marker_gene_list))] <- sir:::get_scores2(si@assays$RNA@scale.data, marker_gene_list)
+
+
+```
+
+```{r, fig.height=16,wig.width=16}
+for (cell_type_names in  list(paste("a1", names(marker_gene_list)), 
+                              paste("a2", names(marker_gene_list)), 
+                              paste0(make.names(names(marker_gene_list)), 1:6)) ) 
+  FeaturePlot(si, features=cell_type_names, reduction = "tsne", ncol=2, pt.size = 2) %>% print()
+```
+
+```{r}
+si@assays$RNA@meta.features %>% as_tibble %>% ggplot(aes(x=log1p_mean_norm, y=log1p_variance_norm)) +
+  stat_function(fun=sf) +
+  geom_point(size=0.1,aes(color=is_variable)) 
+```
+
+```{r}
+
+si@assays$RNA@meta.features %>% as_tibble %>% ggplot(aes(x=mean,y=variance)) + 
+  sir:::scale_x_log_eng() +
+  sir:::scale_y_log_eng() + 
+  geom_point(size=0.1,aes(color=is_variable)) + 
+  geom_abline() + 
+  geom_abline(slope=2) + 
+  stat_function(fun = function(.) log10(.+.^2),color="red")
+
+si@assays$RNA@meta.features %>% as_tibble %>% ggplot(aes(x=log1p_mean, y=log1p_variance)) + 
+  stat_function(fun = Vectorize(function(.) var(log1p(rlnorm(n = 1000, meanlog = log(exp(.)-1)))), SIMPLIFY = TRUE), aes(color="Log normal"))+ 
+  stat_function(fun = Vectorize(function(.) var(log1p(rpois(n = 1000, lambda = exp(.)-1))), SIMPLIFY = TRUE), aes(color="Poisson"))+ 
+  stat_function(fun = Vectorize(function(.) var(log1p(rnbinom(n = 1000, size=1, mu = exp(.)-1))), SIMPLIFY = TRUE), aes(color="neg. bin.")) + 
+  geom_point(size=0.1,aes(color=is_variable)) + 
+  paletteer::scale_color_paletteer_d("yarr", "nemo") +
+  NULL
+
+si@assays$RNA@meta.features %>% as_tibble %>% ggplot(aes(x=log1p_mean_norm, y=log1p_variance_norm)) + 
+  stat_function(fun = Vectorize(function(.) var(log1p(rpois(n = 1000, lambda = rlnorm(n = 1000, meanlog = log(exp(.)-1), sdlog=sqrt(1/20))))), SIMPLIFY = TRUE), aes(color="Poisson Log normal"))+ 
+  stat_function(fun = Vectorize(function(.) var(log1p(rpois(n = 1000, lambda = exp(.)-1))), SIMPLIFY = TRUE), aes(color="Poisson"))+ 
+  stat_function(fun = Vectorize(function(.) var(log1p(rnbinom(n = 1000, size=20, mu = exp(.)-1))), SIMPLIFY = TRUE), aes(color="neg. bin."))+
+  geom_point(size=0.1,aes(color=is_variable)) + 
+  paletteer::scale_color_paletteer_d("yarr", "nemo") +
+  NULL
+
+
+```
+
+
+
+```{r}
+
+si@assays$RNA@counts[si@assays$RNA@var.features[1:10],] %>% as.matrix() %>% data.table::melt(., variable.name="gene",value.name="expression") %>%  ggplot(aes(x=expression, y=Var1)) + geom_jitter()+ sir:::scale_x_log_eng() 
+si@assays$RNA@data[si@assays$RNA@var.features[1:10],] %>% as.matrix() %>% data.table::melt(., variable.name="gene",value.name="expression") %>%  ggplot(aes(x=expression, y=Var1)) + geom_jitter() 
+si@assays$RNA@scale.data[si@assays$RNA@var.features[1:10],] %>% as.matrix() %>% data.table::melt(., variable.name="gene",value.name="expression") %>%  ggplot(aes(x=expression, y=Var1)) + geom_jitter() 
+
+```

@@ -1,0 +1,115 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  bulk_data_file_organoid: "raw_data/DE_young_aged_bulk_organoid.tsv"
+  bulk_data_file_in_vivo: "raw_data/DE_young_aged_bulk_in_vivo.tsv"
+  single_cell_data_file_organoid: "results_ci_human/analysis_organoids/4_differential_expression/DE_samples_as_replicates.tsv"
+  single_cell_data_file_in_vivo: "results_ci_human/analysis_in_vivo/4_differential_expression/DE_samples_as_replicates.tsv"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+de_single_cell_dt <- fread(fs::path(single_cell_data_file_in_vivo), sep="\t")
+de_single_cell_dt <- de_single_cell_dt[contrast == "condition_young_vs_aged"]
+de_single_cell_dt[, gene_name := gene]
+setnames(de_single_cell_dt, 
+         old =  c("estimate", "stderror", "statistic", "p.value", "p.adjusted"),
+         new = c("log2FoldChange", "lfcSE", "stat", "pvalue", "padj")
+)
+de_single_cell_dt
+```
+
+
+```{r load in vivo differential expression testing results table}
+de_in_vivo_dt <- fread(fs::path(bulk_data_file_in_vivo), sep="\t")
+de_in_vivo_dt[, cell_type := "bulk"]
+de_in_vivo_dt <- rbind(de_in_vivo_dt, de_single_cell_dt, fill = TRUE)
+de_in_vivo_dt
+```
+
+```{r}
+de_single_cell_dt <- fread(fs::path(single_cell_data_file_organoid), sep="\t")
+de_single_cell_dt <- de_single_cell_dt[contrast == "condition_young_vs_aged"]
+de_single_cell_dt[, gene_name := gene]
+setnames(de_single_cell_dt, 
+         old =  c("estimate", "stderror", "statistic", "p.value", "p.adjusted"),
+         new = c("log2FoldChange", "lfcSE", "stat", "pvalue", "padj")
+)
+de_single_cell_dt
+```
+
+```{r load organoid differential expression testing results table}
+de_organoid_dt <- fread(fs::path(bulk_data_file_organoid), sep="\t")
+de_organoid_dt[, cell_type := "bulk"]
+de_organoid_dt <- rbind(de_organoid_dt, de_single_cell_dt, fill = TRUE)
+de_organoid_dt
+```
+
+```{r}
+de_dt <- merge(de_in_vivo_dt, de_organoid_dt, by = c("cell_type", "gene_name"), suffixes = c("_in_vivo", "_organoid"))
+de_dt
+```
+
+
+```{r plot correlation all genes}
+de_dt[, .SD[rank(-baseMean_in_vivo)<=2000], by = .(cell_type)][, {
+  p1 <- de_dt %>% ggplot(aes(x= log2FoldChange_in_vivo, y=log2FoldChange_organoid)) + ggpointdensity::geom_pointdensity() + ggtitle(paste0(cell_type))
+  print(p1)
+  p1 <- p1 + geom_smooth(method = "deming", color= "black", formula = y ~ x) + ggpubr::stat_cor()
+  print(p1)
+}, by = .(cell_type)] %>% invisible()
+```
+
+    
+
+```{r plot correlation significant in bulk only}
+de_dt[padj_organoid < 0.1][, {
+  p1 <- .SD %>% ggplot(aes(x= log2FoldChange_in_vivo, y=log2FoldChange_organoid)) + ggpointdensity::geom_pointdensity() + ggtitle(paste0(cell_type))
+  print(p1)
+  p1 <- schelpr::fix_plot_limits(p1)
+  p1 <- p1 + geom_smooth(method = "deming", color= "black", formula = y ~ x) + ggpubr::stat_cor()
+  print(p1)
+}, by = .(cell_type)] %>% invisible()
+```   
+    
+```{r plot correlation significant in both only}
+de_dt[padj_in_vivo < 0.5][padj_organoid < 0.5][, {
+  p1 <- .SD %>% ggplot(aes(x= log2FoldChange_in_vivo, y=log2FoldChange_organoid)) + ggpointdensity::geom_pointdensity() + ggtitle(paste0(cell_type))
+  print(p1)
+  p1 <- p1 + geom_smooth(method = "deming", color= "black", formula = y ~ x) + ggpubr::stat_cor()
+  print(p1)
+}, by = .(cell_type)] %>% invisible()
+```   
+
+    
+```{r plot correlation small error in both only}
+de_dt[lfcSE_in_vivo < 0.1][lfcSE_organoid < 0.1][, {
+  p1 <- .SD %>% ggplot(aes(x= log2FoldChange_in_vivo, y=log2FoldChange_organoid)) + ggpointdensity::geom_pointdensity() + ggtitle(paste0(cell_type))
+  print(p1)
+  p1 <- p1 + geom_smooth(method = "deming", color= "black", formula = y ~ x) + ggpubr::stat_cor()
+  print(p1)
+}, by = .(cell_type)] %>% invisible()
+```   
+
+
+
+
+
+
+

@@ -1,0 +1,182 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  processed_data_dir: "results_human/analysis_with_interaction/2_clustering_and_cell_type_assignment"
+  results_dir: "results"
+---
+
+```{r do setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+cell_types_df <- fread("SI_cell_type_markers.tsv")
+cell_types_df
+```
+
+```{r}
+features_df <- fread("SI_feature_gene_lists.tsv")
+features_df
+```
+
+```{r}
+meta_df <- fread("Sample meta - Sheet1.tsv")
+meta_df
+meta_dt <- data.table(meta_df, key="sample_id")[, Tx_run_number:=factor(Tx_run_number)][]
+meta_dt
+```
+
+```{r}
+cell_cycle_components <- c("ccs" , "ccg2m" )
+```
+
+
+Saving processed data for later downstream analysis (not longterm)
+```{r}
+si <- readRDS(fs::path(processed_data_dir, "seurat_object.rds")) 
+```
+
+
+
+```{r}
+cell_type_counts_dt <-as.data.table(si@meta.data)[,.(n_cells=.N),by=.(cell_type,sample_id)][,n_cells_sample:=sum(n_cells), by=sample_id][]
+si <-  si[, si@meta.data$cell_type %in% c("Steam", "TA", "Enterocyte")]
+```
+
+```{r}
+si %<>% RunPCA()
+si %<>% RunTSNE()
+```
+
+
+```{r}
+si %<>% FindNeighbors()
+si %<>% RunUMAP(dims=1:20)
+```
+
+```{r}
+dt <- si %>% meta_and_reductions
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=`Stem cells`)) + geom_point()
+```
+
+```{r}
+dt <- si %>% meta_and_reductions
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=ccg2m)) + geom_point()
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=ccs)) + geom_point()
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=Enterocytes)) + geom_point()
+dt %>% ggplot(aes(x=tSNE_1, y=tSNE_2, color=`Stem cells`)) + geom_point()
+```
+
+
+```{r}
+dt <- si %>% meta_and_reductions
+dt %>% ggplot(aes(x=UMAP_1, y=UMAP_2, color=ccg2m)) + geom_point()
+dt %>% ggplot(aes(x=UMAP_1, y=UMAP_2, color=ccs)) + geom_point()
+dt %>% ggplot(aes(x=UMAP_1, y=UMAP_2, color=Enterocytes)) + geom_point()
+dt %>% ggplot(aes(x=UMAP_1, y=UMAP_2, color=`Stem cells`)) + geom_point()
+```
+
+```{r}
+dt <- si %>% meta_and_reductions
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=ccg2m)) + geom_point()
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=ccs)) + geom_point()
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=Enterocytes)) + geom_point()
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=`Stem cells`)) + geom_point()
+```
+
+```{r}
+si@meta.data$Cd44 <- si@assays$RNA@counts["Cd44",] 
+
+dt <- si %>% meta_and_reductions
+si@meta.data$enterocyte_vs_stem_cell <- scale(si@meta.data$Enterocytes)-scale(si@meta.data$`Stem cells`)
+si@meta.data$enterocyte_vs_stem_cell_fitted <- predict(lm(si@meta.data$enterocyte_vs_stem_cell ~ si@reductions$pca@cell.embeddings[,1:2]))
+
+dt <- si %>% meta_and_reductions
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=enterocyte_vs_stem_cell_fitted)) + geom_point()
+
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=enterocyte_vs_stem_cell_fitted)) + geom_point() + facet_grid(.~Tx_run_number)
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=enterocyte_vs_stem_cell)) + geom_point() + facet_grid(.~Tx_run_number)
+
+gene <- "Olfm4" #"Lgr5" # "Olfm4"
+si@meta.data[gene] <- si@assays$RNA@counts[gene,] 
+
+dt <- si %>% meta_and_reductions
+dt %>% ggplot(aes_string(x="PC_1", y="PC_2", color=gene)) + geom_point() + facet_grid(.~Tx_run_number) +scale_color_continuous(trans="log1p")
+
+
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=`Stem cells`)) + geom_point() + facet_grid(.~Tx_run_number)
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=ccg2m)) + geom_point() + facet_grid(.~Tx_run_number)
+
+                                                                                       
+dt %>% ggplot(aes(x=PC_1, y=PC_2, color=enterocyte_vs_stem_cell)) + geom_point()
+```
+
+```{r}
+dt %>% ggplot(aes(color=condition, x=enterocyte_vs_stem_cell_fitted, group= interaction(sample_id))) +
+  stat_density(fill=NA, color="gray", position = position_identity(), data= copy(dt)[ , c("condition", "treatment") := NULL]) +
+  stat_density(fill=NA, position = position_identity()) + 
+  facet_grid(condition~treatment, labeller = label_both) + 
+  NULL
+
+dt %>% ggplot(aes(color=condition, x=enterocyte_vs_stem_cell_fitted)) +
+  stat_density(fill=NA, color="gray", position = position_identity(), data= copy(dt)[ , c("condition", "treatment") := NULL]) +
+  stat_density(fill=NA, position = position_identity(), aes( group= interaction(condition, treatment))) + 
+  facet_grid(condition~treatment, labeller = label_both) + 
+  NULL
+
+summary_dt <- dt[, .(enterocyte_vs_stem_cell = mean(enterocyte_vs_stem_cell_fitted)), by= .(sample_id, treatment, condition, line, Tx_run_number)]
+summary_dt %>% ggplot(aes(color=condition, x=1, y=enterocyte_vs_stem_cell, group= interaction(sample_id), shape=as.character(Tx_run_number))) +
+  geom_jitter(fill=NA, position = position_identity(), size= 5) + 
+  facet_grid(.~treatment, labeller = label_both) + 
+  NULL
+
+dt %>% ggplot(aes(x=condition, y=enterocyte_vs_stem_cell_fitted, fill=treatment, group= interaction(sample_id))) + geom_violin() 
+```
+
+```{r}
+#factanal(si@assays$RNA@scale.data)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

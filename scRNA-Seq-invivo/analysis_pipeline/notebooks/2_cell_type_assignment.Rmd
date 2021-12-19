@@ -1,0 +1,189 @@
+---
+title: "Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche - integration"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  so_dir: "results_ci_human/analysis_in_vivo/2x1_clustering_and_cell_type_assignment" # "results_ci_human/analysis_in_vivo/1_integration" 
+  merge_goblet_and_paneth: FALSE
+  results_dir: "results"
+  haber_so_dir: "results_ci_human/analysis_in_vivo/0_prepare_Haber_data"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r load  gene list}
+cell_types_dt <- fread("SI_cell_type_markers.tsv")[marker_gene_symbol!=""]
+cell_types_list <- lapply(split(cell_types_dt, by="cell_type"), `[`, , marker_gene_symbol)
+
+features_dt <- fread("SI_feature_gene_lists.tsv")[marker_gene_symbol!=""]
+features_list <- lapply(split(features_dt, by="feature"), `[`, , marker_gene_symbol)
+```
+
+```{r load haber data}
+haber_so <- read_rds( fs::path(haber_so_dir, "seurat_object.rds"))
+```
+
+```{r load  data}
+so <- read_rds(fs::path(so_dir, "seurat_object.rds"))
+```
+
+```{r transfer cell type labels}
+so.anchors <- FindTransferAnchors(reference = haber_so, query = so, dims = 1:30)
+predictions <- TransferData(anchorset = so.anchors, refdata = haber_so$cell_type_haber, dims = 1:30)
+so <- AddMetaData(so, metadata = predictions)
+```
+
+```{r}
+mm <- so %>% schelpr::meta_and_reductions()
+mm_wo_facet <- copy(mm)[, c("sample_name", "Tx_run_number", "condition", "treatment") := NULL]
+```
+
+```{r plot transferred labels,fig.width= 12}
+for (reduction in c("tSNE", "UMAP")) {
+  p1 <- mm %>% ggplot(aes_string(x=paste0(reduction, "_1"), y=paste0(reduction, "_2"), color="predicted.id")) + 
+    geom_cell(data=mm_wo_facet, color="gray") +
+    geom_cell() + 
+    guides(color = guide_legend(override.aes = aes(size=1))) +
+    facet_wrap("sample_id", ncol = 4) +
+    NULL
+  print(p1)
+}
+```
+
+```{r plot transferred label scores, fig.width= 12}
+for (reduction in c("tSNE", "UMAP")) {
+  for (cell_type in paste0("`",names(cell_types_list), "`")) {
+    p1 <- mm %>% ggplot(aes_string(x=paste0(reduction, "_1"), y=paste0(reduction, "_2"), color=cell_type)) + 
+      geom_cell(data=mm_wo_facet, color="gray") +
+      geom_cell() + 
+      facet_wrap("sample_id", ncol = 4) +
+      NULL
+    p1 %>% print()
+  }
+}
+```
+
+```{r, fig.width= 12}
+ mm %>% ggplot(aes_string(x="tSNE_1", y="tSNE_2", color="sample_name")) + 
+  geom_cell(data=mm_wo_facet, color="gray") + 
+  geom_cell() + 
+  guides(color = guide_legend(ncol = 2, override.aes = aes(size=1))) +
+  facet_wrap("Tx_run_number", ncol = 4) +
+  NULL
+
+ mm %>% ggplot(aes_string(x="tSNE_1", y="tSNE_2", color="condition")) + 
+  geom_cell(data=mm_wo_facet, color="gray") + 
+  geom_cell() + 
+  facet_wrap("Tx_run_number", ncol = 4) +
+  NULL
+```
+
+
+```{r count in how many samples each label was assigned}
+mm[,.N, by= .(sample_id, predicted.id)][,.N, by=.(predicted.id)]
+```
+
+
+```{r map Harber et al. labels to simple cell types}
+cell_type_map <- data.table(
+  harber = c("Stem", "TA Early", "TA G1", "TA G2", "Enterocyte Progenitor.Early", "Enterocyte Progenitor", "Enterocyte Progenitor.Late",  "Enterocyte Immature.Proximal", "Enterocyte Immature.Distal", "Enterocyte Mature.Distal", "Enterocyte Mature.Proximal", "Endocrine", "Paneth", "Goblet", "Tuft"),
+  our = c("Stem", "TA",       "TA"   , "TA",    "TA",                          "Enterocyte Progenitor", "Enterocyte Progenitor",       "Enterocyte Progenitor",        "Enterocyte Progenitor",      "Enterocyte"              , "Enterocyte",                 "EEC",       "Paneth", "Goblet", "Tuft"))
+if(merge_goblet_and_paneth) cell_type_map[our %in% c("Goblet", "Paneth"), our := "Goblet & Paneth"]
+cell_type_map
+
+so$cell_type <- cell_type_map[, factor(so$predicted.id, harber, our)]
+```
+
+```{r}
+mm <- so %>% schelpr::meta_and_reductions()
+mm_wo_facet <- copy(mm)[, c("sample_name", "Tx_run_number", "condition", "treatment") := NULL]
+```
+
+```{r}
+for (reduction in c("tSNE", "UMAP")) {
+  p1 <- mm %>% ggplot(aes_string(x=paste0(reduction, "_1"), y=paste0(reduction, "_2"), color="cell_type")) + 
+    geom_cell() + 
+    guides(color = guide_legend(override.aes = aes(size=1))) +
+    NULL
+  print(p1)
+}
+```
+
+```{r}
+mm[,cell_type_confident := cell_type]
+mm[, confidence := rank(prediction.score.max)/.N, by= .(cell_type)]
+mm[confidence<=0.33, cell_type_confident := NA, by= .(cell_type)]
+for (reduction in c("tSNE", "UMAP")) {
+  p1 <- mm %>% ggplot(aes_string(x=paste0(reduction, "_1"), y=paste0(reduction, "_2"), color="cell_type_confident")) + 
+    geom_cell() + 
+    guides(color = guide_legend(override.aes = aes(size=1))) +
+    NULL
+  print(p1)
+}
+```
+
+```{r}
+for (reduction in c("tSNE", "UMAP")) {
+  p1 <- mm %>% ggplot(aes_string(x=paste0(reduction, "_1"), y=paste0(reduction, "_2"), color="cell_type")) + 
+    geom_cell() + 
+    guides(color = guide_legend(override.aes = aes(size=1))) +
+    scale_color_cell_type() +
+    NULL
+  print(p1)
+}
+```
+
+```{r}
+for (reduction in c("tSNE", "UMAP")) {
+  p1 <- mm %>% ggplot(aes_string(x=paste0(reduction, "_1"), y=paste0(reduction, "_2"), color="prediction.score.Stem")) + 
+    geom_cell() + 
+    guides(color = guide_legend(override.aes = aes(size=1))) +
+    NULL
+  print(p1)
+}
+```
+
+```{r count in how many samples each cell type was assigned}
+mm[,.N, by= .(sample_id, cell_type)][,.N, by=.(cell_type)]
+```
+
+
+
+```{r plot qc per cell type}
+mm %>% ggplot(aes(x=nCount_RNA, y=fraction_mito, color=sample_id)) +
+  geom_cell() +
+  gghighlight::gghighlight(label_key = cell_type) +
+  facet_wrap("cell_type", nrow=2) +
+  schelpr::scale_x_log() +
+  guides(color = guide_legend(override.aes = list(size = 1))) +
+  NULL
+
+mm %>% ggplot(aes(x=nCount_RNA, y=fraction_mito, color=cell_type)) +
+  geom_cell() +
+  sir::scale_color_cell_type() +
+  facet_wrap("sample_id") +
+  schelpr::scale_x_log() +
+  guides(color = guide_legend(override.aes = list(size = 1))) +
+  NULL
+```
+
+```{r save cell meta data for downstream analysis}
+so %>% schelpr::meta_and_reductions() %>% fwrite(fs::path(results_dir,"meta_and_reductions.tsv"), sep= "\t")
+```
+
+```{r save seurat object for use in downstream analysis}
+write_rds(so, fs::path(results_dir,"seurat_object.rds"))
+```

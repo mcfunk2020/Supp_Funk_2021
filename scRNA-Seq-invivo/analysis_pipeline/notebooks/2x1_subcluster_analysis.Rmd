@@ -1,0 +1,103 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche  - sub cluster analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  processed_data_dir: "results_ci_human/analysis_in_vivo/2_clustering_and_cell_type_assignment"
+  selected_cell_types: !r c("Paneth cells", "Goblet cells")
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r}
+library(Seurat)
+
+library(dplyr)
+library(ggrepel)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r data_loading}
+si <- readRDS(fs::path(processed_data_dir, "seurat_object.rds")) 
+```
+
+```{r}
+cell_types <- unique(si@meta.data$cell_type)
+cell_types_of_interest <- na.omit(cell_types[str_detect(cell_types, paste0(selected_cell_types, collapse = "|"))])
+si_sub <- si %>% subset(subset= cell_type %in% cell_types_of_interest)
+si_sub
+si_sub <- ScaleData(object = si_sub, vars.to.regress = c("sample_id", "ccs", "ccg2m", "percent.mito", "nFeature_RNA"))
+si_sub <- RunPCA(object = si_sub)
+ElbowPlot(si_sub)
+```
+
+
+```{r}
+si_sub <- RunUMAP(object = si_sub, reduction = "pca", n.neighbors=30, dims = 1:15)
+si_sub <- RunTSNE(object = si_sub, reduction = "pca", dims = 1:15)#, perplexity=5)
+si_sub <- FindNeighbors(object = si_sub, reduction = "umap", k.param = 10, dims=1:2)
+si_sub 
+```
+
+
+```{r}
+for (reduction in c("pca", "umap", "tsne")) 
+  FeaturePlot( si_sub, features =  c("Enterocytes", "Stem cells", "Paneth cells", "Goblet cells"), reduction = reduction, pt.size=1) %>% print
+```
+
+```{r}
+for (reduction in c("pca", "umap", "tsne")) 
+  FeaturePlot( si_sub, features =  c("ccs", "ccg2m", "percent.mito", "nFeature_RNA"), reduction = reduction, pt.size=1) %>% print
+```
+
+```{r}
+for (reduction in c("pca", "umap", "tsne")) 
+  DimPlot( si_sub, group.by = c("sample_name", "cell_type"), reduction = reduction, pt.size=1, combine = FALSE) %>% print
+```
+
+
+```{r}
+differenciation_factor <- si_sub@reductions$pca@feature.loadings[,1] 
+
+joint_features <- intersect(names(differenciation_factor), rownames(si_sub@assays$RNA@scale.data))
+
+si_sub <- ScaleData(object = si_sub) # re-scale data without correcting for anything
+differenciation_scores <- t(si_sub@assays$RNA@scale.data[joint_features,]) %*% differenciation_factor[joint_features]
+si_sub@meta.data[rownames(differenciation_scores), "differenciation_score"] <-  differenciation_scores
+si_sub@meta.data$differenciation_score <- si_sub@meta.data$differenciation_score * sign(cor(si_sub@meta.data[,c("differenciation_score", "Enterocytes")])[1,2])
+
+si_sub@meta.data %>% as_tibble %>% ggplot(aes(x=differenciation_score, y=Enterocytes, color=sample_name)) + geom_point()
+si_sub@meta.data %>% as_tibble %>% ggplot(aes(x=differenciation_score, y=`Stem cells`, color=sample_name)) + geom_point()
+si_sub@meta.data %>% as_tibble %>% ggplot(aes(x=differenciation_score, color=sample_name)) + stat_density(geom="line", position = position_identity())
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

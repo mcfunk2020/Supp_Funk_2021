@@ -1,0 +1,12 @@
+.Rproj.user
+.Rhistory
+.RData
+sir/inst/doc
+*.PowerFolder
+*.rcache
+*.Rcheck
+*.tar.gz
+*.html
+*.md
+processed_data/
+results*

@@ -1,0 +1,53 @@
+---
+title: "Ageing & Wnt in an organoid model of the mouse small intestinal stem cell niche - analysis"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  processed_data_dir: "results_ci_human/analysis_in_vivo/2_cell_type_assignment"
+  results_dir: "results"
+---
+
+```{r do setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+features_dt <- fread("SI_feature_gene_lists.tsv")[marker_gene_symbol!=""]
+features_list <- lapply(split(features_dt, by="feature"), `[`, , marker_gene_symbol)
+```
+
+```{r}
+so <- read_rds(fs::path(processed_data_dir,"seurat_object.rds"))
+```
+
+```{r plot marker gene expression}
+all_marker_genes <- unique(unlist(c(features_list)))
+all_marker_genes <- all_marker_genes[all_marker_genes %in% rownames(GetAssayData(so, "data", "RNA"))]
+mg_dt <- data.table(cbind(t(as.matrix(GetAssayData(so, "data", "RNA")[all_marker_genes,, drop = FALSE])), so@reductions$tsne@cell.embeddings)) %>% shuffle()
+
+fs::dir_create(fs::path(results_dir, "marker_genes"))
+
+for(marker_gene in all_marker_genes){
+  p1 <- ggplot(mg_dt, aes_string("tSNE_1","tSNE_2", color=paste0("`", marker_gene, "`"))) +
+    geom_cell() +
+    scale_color_viridis_c() +
+    coord_fixed() +
+    labs(color = "expression\nlog10(1+CPM/100)") +
+    ggtitle(marker_gene) +
+    NULL # log10(1+CPM/1e6*1e4
+  print(p1)
+}
+
+```

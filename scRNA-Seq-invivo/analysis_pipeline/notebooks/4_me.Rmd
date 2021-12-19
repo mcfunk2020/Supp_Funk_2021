@@ -1,0 +1,125 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+
+library(dplyr)
+
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := as.character(Tx_run_number)][]
+meta_dt
+```
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := as.character(Tx_run_number)]
+agg_dt[, cell_type := factor(cell_type, levels = unique(c("pseudo bulk", cell_type)))]
+agg_dt[, .(n_samples = length(unique(sample_id))), by = .(condition, cell_type)]
+```
+```{r}
+dt <- agg_dt[]
+dt
+```
+
+
+```{r, fig.height=12, fig.width=12}
+dt[, rel_expression := scale(expression_mean), by=gene]
+ddt <- dcast(dt[!(cell_type %in% c("pseudo bulk"))], gene ~ sample_id + condition + cell_type, value.var = "rel_expression")
+xx <- cor(as.matrix(ddt[,-1]))
+ggcorrplot::ggcorrplot(xx, hc.order = TRUE, outline.col = "white")
+```
+
+```{r}
+library(car)
+sub_dt <- dt[gene %in% "Itgam"][!(cell_type %in% c("pseudo bulk", "Tuft"))][!(Tx_run_number  %in% c("9"))] #Defa17
+```
+
+```{r, fig.height = 3.5, fig.width = 9}
+this_dodge <- position_dodge(width=0.2)
+sub_dt %>% ggplot(aes(x = cell_type, y = expression_mean, ymin = expression_mean-expression_sem, ymax = expression_mean+expression_sem, color = condition, group = interaction(cell_type, Tx_run_number))) +
+  geom_point(aes(shape = Tx_run_number), size = 2, position = this_dodge) +
+  geom_errorbar(width = 0.3, position = this_dodge) +
+  geom_line(aes(group = sample_id, linetype = Tx_run_number), position = this_dodge) +
+  scale_x_cell_type() +
+  facet_wrap("gene", scales = "free_y", nrow = 2) +
+  #scale_y_log1p() +
+  coord_cartesian(ylim=c(0, NA)) +
+  scale_color_age() +
+  theme(aspect.ratio = 2/3) +
+  NULL
+ggsave(filename = "results/example_expression_celltype.png", dpi = 600, height = FIG_HEIGHT, width = FIG_HEIGHT*3,  bg = "transparent")
+```
+
+```{r, fig.height = 3.5, fig.width = 9}
+this_dodge <- position_dodge(width=0.2)
+sub_dt %>% ggplot(aes(x = cell_type, y = CPM, ymin = CPM_lower, ymax = CPM_upper, color = condition, group = interaction(cell_type, Tx_run_number))) +
+  geom_point(aes(shape = Tx_run_number), size = 2, position = this_dodge) +
+  geom_errorbar(width = 0.3, position = this_dodge) +
+  geom_line(aes(group = sample_id, linetype = Tx_run_number), position = this_dodge) +
+  scale_x_cell_type() +
+  facet_wrap("gene", scales = "free_y", nrow = 2) +
+  scale_y_log1p() +
+  scale_color_age() +
+  theme(aspect.ratio = 2/3) +
+  NULL
+ggsave(filename = "results/example_cpm_celltype.png", dpi = 600, height = FIG_HEIGHT, width = FIG_HEIGHT*3)
+```
+
+```{r}
+data_dt <- dcast(sub_dt, condition + sample_id ~ cell_type, value.var = "cpm")
+data_dt
+expression <- as.matrix(data_dt[, -c("condition")], rownames = "sample_id")
+expression
+jdata_dt <- data_dt[, c("sample_id", "condition")]
+jdata_dt[, condition := factor(condition)]
+jdata_dt
+
+idata_dt <- data.table(cell_type = colnames(expression))
+#idata_dt <- donor_meta_dt[idata_dt, on = .(cell_type)]
+idata_dt[, cell_type := factor(cell_type)][]
+idata_dt
+```
+
+
+```{r}
+fit1 <- lm(expression ~ condition, jdata_dt)
+fit1
+```
+
+
+```{r}
+res <- Anova(fit1, idata = idata_dt[,.(cell_type)], idesign = ~ cell_type)
+res
+```
+
+
+```{r}
+summary(res, multivariate=FALSE)
+```
+```{r}
+
+```
+

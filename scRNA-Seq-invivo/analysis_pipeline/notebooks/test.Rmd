@@ -1,0 +1,24 @@
+---
+params:
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+```{r}
+1
+a = 2
+```
+
+```{r}
+make_error <- function(b=1)
+  stop("don't do this!")
+```
+
+```{r}
+d <- 3
+make_error()
+```
+

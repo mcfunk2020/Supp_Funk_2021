@@ -1,0 +1,173 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  only_untreated: !r FALSE
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := factor(Tx_run_number)][]
+meta_dt
+```
+
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := factor(Tx_run_number)][]
+```
+```{r}
+library(rTensor)
+top1000 <- agg_dt[gene %in% unique(agg_dt, by="gene")[rank(-expression_mean_of_gene) <= 1000, gene]]
+
+x <- dcast(top1000, sample_id + cell_type ~ gene, value.var = "expression_log1p_mean")
+idx <- x[,1:2]
+x <- x[, -(1:2)]
+x <- as.matrix(x)
+selected <- !(idx$cell_type %in% c("Paneth", "pseudo bulk"))
+x <- x[selected,]
+idx <- idx[selected,]
+dimnames_x <- list(cell_type = unique(idx$cell_type), sample_id = unique(idx$sample_id), gene = colnames(x))
+dim(x) <- sapply(dimnames_x, length)
+dimnames(x) <- dimnames_x
+str(x)
+```
+
+
+```{r}
+library(rray)
+xn <- as_rray(x) # cell_types x samples x genes
+xn <- xn - rray_mean(xn, c(1,3)) # subtract sample mean (again)
+xn <- xn - rray_mean(xn, 1:2) # standardize genes (mean)
+xn <- xn / sqrt(rray_mean(xn^2, 1:2)) # standardize genes (variance)
+
+#xn <- xn - rray_mean(xn, c(1,3))
+#xn <- xn / rray_mean(xn^2, c(1,3))
+
+1
+```
+
+```{r}
+n <- 2
+m <- 2
+res <- rTensor::mpca(as.tensor(as.array(xn)), ranks = c(n, m))
+rownames(res$U[[1]]) <- dimnames(xn)[[1]]
+colnames(res$U[[1]]) <- paste0("mPCA_", utils::as.roman(seq_len(n)))
+rownames(res$U[[2]]) <- dimnames(xn)[[2]]
+colnames(res$U[[2]]) <- paste0("mPCA_", seq_len(m))
+dimnames(res$Z_ext@data) <- list(cell_type_factor = paste0("celltype_factor_", seq_len(n)), sample_factor = paste0("sample_factor_", seq_len(m)), gene = dimnames(x)[[3]])
+
+str(res)
+```
+
+
+```{r}
+celltype_embedding_dt <- data.table(res$U[[1]], keep.rownames = "celltype") 
+celltype_embedding_dt %>% ggplot(aes(x=mPCA_I, y = mPCA_II, color=celltype)) + geom_point(size = 5) + scale_color_cell_type()
+
+sample_embedding_dt <- meta_dt[data.table(res$U[[2]], keep.rownames = "sample_id"), on = .(sample_id)] 
+sample_embedding_dt %>% ggplot(aes(x=mPCA_1, y = mPCA_2, color=condition, shape= Tx_run_number)) + geom_point(size =5) + sir::scale_color_age()
+
+#sample_embedding_dt %>% ggplot(aes(x=mPCA_3, y = mPCA_4, color=condition, shape= Tx_run_number)) + geom_point(size =5) + sir::scale_color_age()
+
+#sample_embedding_dt %>% ggplot(aes(x=mPCA_1, y = mPCA_5, color=condition, shape= Tx_run_number)) + geom_point(size =5) + sir::scale_color_age()
+
+gene_embedding_dt <- data.table(t(as.matrix(as.array(res$Z_ext[1:2,1,,drop=TRUE]@data))), keep.rownames = "gene") 
+markers_dt <- fread("SI_feature_gene_lists.tsv")
+gene_embedding_dt <- markers_dt[gene_embedding_dt, on = .(marker_gene_symbol=gene)] 
+gene_embedding_dt %>% ggplot(aes(x=celltype_factor_1, y = celltype_factor_2, color = feature)) + ggpointdensity::geom_pointdensity(aes(alpha = after_stat(density))) +
+  geom_point(data= gene_embedding_dt[!is.na(feature)])
+
+
+
+```
+
+
+
+```{r}
+n <- 4
+m <- 3
+
+xxn <- rray_transpose(xn, c(3,1,2))
+res <- rTensor::mpca(as.tensor(as.array(xxn)), ranks = c(n, m))
+rownames(res$U[[1]]) <- dimnames(xxn)[[1]]
+colnames(res$U[[1]]) <- paste0("mPCA_", utils::as.roman(seq_len(n)))
+rownames(res$U[[2]]) <- dimnames(xxn)[[2]]
+colnames(res$U[[2]]) <- paste0("mPCA_", seq_len(m))
+dimnames(res$Z_ext@data) <- list(cell_type_factor = paste0("gene_factor_", seq_len(n)), sample_factor = paste0("celltype_factor_", seq_len(m)), sample = dimnames(xxn)[[3]])
+
+str(res)
+```
+
+```{r}
+celltype_embedding_dt <- data.table(data.frame(res$U[[2]]), keep.rownames = "cell_type")
+celltype_embedding_dt %>% ggplot(aes(x=mPCA_1, y = mPCA_2, color=cell_type)) + geom_point(size = 5) + scale_color_cell_type()
+
+sample_embedding_dt <- meta_dt[as.data.table(c(lapply(setNames(1:2, paste0("factor_", 1:2)),function(i) res$Z_ext[i,i,,drop=TRUE]@data), list(sample_id=dimnames(res$Z_ext@data)[[3]]))) , on = .(sample_id)] 
+sample_embedding_dt %>% ggplot(aes(x=factor_1, y = factor_2, color=condition, shape= Tx_run_number)) + geom_point(size =5) + sir::scale_color_age()
+
+gene_embedding_dt <- data.table(data.frame(res$U[[1]]), keep.rownames = "gene") #data.table(t(as.matrix(as.array(res$Z_ext[1:2,1,,drop=TRUE]@data))), keep.rownames = "gene") 
+markers_dt <- fread("SI_feature_gene_lists.tsv")
+gene_embedding_dt <- markers_dt[gene_embedding_dt, on = .(marker_gene_symbol=gene)] 
+gene_embedding_dt %>% ggplot(aes(x=mPCA_I, y = mPCA_II, color = feature)) + ggpointdensity::geom_pointdensity(aes(alpha = after_stat(density))) +
+  geom_point(data= gene_embedding_dt[!is.na(feature)])
+
+
+
+```
+
+```{r}
+Z_dt <- reshape2::melt(res$Z_ext@data)
+
+Z_dt %>% ggplot(aes(x= cell_type_factor, y= sample_factor, fill=value))+geom_raster() +facet_wrap("sample", ncol=2)
+
+library(ComplexHeatmap)
+Heatmap(res$U[[1]])
+Heatmap(t(res$U[[2]]))
+
+Heatmap(res$Z_ext@data[,1,])
+Heatmap(t(res$Z_ext@data[1,,]))
+Heatmap(res$Z_ext@data[,,1])
+
+Z <- res$Z_ext@data
+dimnames_z <- list(factor= data.table(expand.grid(dimnames(Z)[[1]], dimnames(Z)[[2]]))[, paste(Var1, Var2)], gene = dimnames(Z)[[3]])
+dim(Z) <- c(prod(dim(Z)[-3]), dim(Z)[3])
+
+dimnames(Z) <- dimnames_z
+Heatmap(Z)
+
+
+clusters <- (cutree(hclust(dist(t(Z))), 3))
+table(clusters)
+
+library(enrichR)
+dbs <- c("GO_Molecular_Function_2018", "GO_Cellular_Component_2018", "GO_Biological_Process_2018", "KEGG_2019_Mouse")
+enrichment_res <- enrichr(names(clusters)[clusters==2], dbs)
+data.table(enrichment_res$GO_Biological_Process_2018)[order(-Combined.Score)]
+```
+
+
+
+

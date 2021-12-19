@@ -1,0 +1,49 @@
+---
+title: "Ageing & Wnt in an organoid model of the mouse small intestinal stem cell niche - analysis"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  processed_data_dir: "results_ci_human/analysis_in_vivo/2_clustering_and_cell_type_assignment"
+  results_dir: "results"
+---
+
+```{r do setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Seurat)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+so <- read_rds(fs::path(processed_data_dir,"seurat_object.rds"))
+```
+
+```{r}
+features_dt <- fread("SI_feature_gene_lists.tsv")[marker_gene_symbol!=""]
+features_list <- lapply(split(features_dt, by="feature"), `[`, , marker_gene_symbol)
+```
+
+```{r}
+mm <- meta_and_reductions(so)
+features_to_plot <- colnames(mm)
+features_to_plot <- features_to_plot[!(features_to_plot %in% c("CBC", "cell", "min_nCount_RNA", "max_frac_mito", "data_dir"))]
+features_to_plot <- features_to_plot[!(features_to_plot %in% names(features_list))]
+mm_wo_facet <- copy(mm)[, c("sample_name", "Tx_run_number", "condition", "treatment") := NULL]
+mm[1:2,]
+```
+
+```{r tSNE meta}
+for (feature in paste0("`", features_to_plot, "`")) {
+  p1 <- mm %>% ggplot(aes_string(x="tSNE_1", y="tSNE_2", color=feature)) + 
+      geom_cell() + 
+      NULL
+    p1 %>% print()
+}
+```

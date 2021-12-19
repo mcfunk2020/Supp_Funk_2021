@@ -1,0 +1,95 @@
+---
+title: "Unbiased dimensionality reduction"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  seurat_object_dir: "results_ci_human/analysis_in_vivo/0_qc_filtering"
+  results_dir: "results"
+---
+
+```{r do setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r load  gene list}
+cell_types_dt <- fread("SI_cell_type_markers.tsv")[marker_gene_symbol!=""]
+cell_types_list <- lapply(split(cell_types_dt, by="cell_type"), `[`, , marker_gene_symbol)
+
+features_dt <- fread("SI_feature_gene_lists.tsv")[marker_gene_symbol!=""]
+features_list <- lapply(split(features_dt, by="feature"), `[`, , marker_gene_symbol)
+```
+
+
+```{r load expression data}
+so <- read_rds(fs::path(seurat_object_dir, "seurat_object.rds"))
+```
+
+```{r find highly variable genes}
+so <- FindVariableFeatures(so)
+```
+
+```{r hvg-selection-plots}
+VariableFeaturePlot(so)
+```
+
+```{r perform dimensionality reduction}
+# add marker genes to HVGs
+#VariableFeatures(so) <- unique(c(VariableFeatures(so), unlist(c(cell_types_list, features_list, sir::cc.genes_mmusculus))))
+
+so %<>% NormalizeData()
+so %<>% ScaleData()
+so %<>% RunPCA()
+so %<>% RunTSNE()
+so %<>% RunUMAP(dims = 1:10)
+```
+
+```{r compute modules scores}
+so[[c("ccs","ccg2m")]] <- pca_scores(GetAssayData(so, slot = "data"),  sir::cc.genes_mmusculus)
+so@meta.data[, names(cell_types_list)] <- pca_scores(GetAssayData(so, slot = "data"), cell_types_list)
+so@meta.data[, names(features_list)] <- pca_scores(GetAssayData(so, slot = "data"), features_list)
+```
+
+# plot reductions
+```{r prepare cell data for plotting}
+mm <- so %>% schelpr::meta_and_reductions()
+mm_wo_facet <- copy(mm)[, c("sample_name", "Tx_run_number", "condition", "treatment") := NULL]
+mm
+```
+
+```{r plot meta}
+for(reduction in c("tSNE", "UMAP")) { 
+  for (variable in c(paste0("`", c(names(cell_types_list)), "`"), "log(nCount_RNA)", "ccg2m", "ccs", "fraction_mito",  "sample_name", "treatment", "condition")) {
+    p1 <- mm %>% ggplot(aes_string(x = paste0(reduction, "_1"), y = paste0(reduction, "_2"), color=variable)) + 
+      geom_cell() + 
+      NULL
+    p1 %>% print()
+  }
+}
+```
+
+```{r bplot meta by-Tx-run}
+for(reduction in c("tSNE", "UMAP")) { 
+  for (variable in c(paste0("`", c(names(cell_types_list)), "`"), "log(nCount_RNA)", "ccg2m", "ccs", "fraction_mito",  "sample_name", "treatment", "condition")) {
+    p1 <- mm %>% ggplot(aes_string(x = paste0(reduction, "_1"), y = paste0(reduction, "_2"), color=variable)) + 
+        geom_cell(data=mm_wo_facet, color="gray") +
+        geom_cell() + 
+        facet_grid(.~Tx_run_number)
+    p1 %>% print()
+  }
+}
+```
+# saving results
+```{r save seurat object for use in downstream analysis}
+write_rds(so, fs::path(results_dir,"seurat_object.rds"))
+```

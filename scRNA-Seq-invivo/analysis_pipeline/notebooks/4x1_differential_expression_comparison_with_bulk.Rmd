@@ -1,0 +1,142 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  single_cell_DE_data_dir: "results_ci_human/analysis_in_vivo/4_differential_expression"
+  bulk_data_file: "raw_data/DE_young_aged_bulk_organoid.tsv"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r load single cell differential expression testing results table}
+de_single_cell_dt <- fread(fs::path(single_cell_DE_data_dir, paste0("DE_samples_as_replicates.tsv")), sep="\t")
+de_single_cell_dt <- de_single_cell_dt[contrast == "condition_young_vs_aged"]
+de_single_cell_dt[, gene_name := gene]
+setnames(de_single_cell_dt, 
+         old =  c("estimate", "stderror", "statistic", "p.value", "p.adjusted"),
+         new = c("log2FoldChange", "lfcSE", "stat", "pvalue", "padj")
+)
+de_single_cell_dt
+```
+
+```{r load bulk differential expression testing results table}
+de_bulk_dt <- fread(fs::path(bulk_data_file), sep="\t")
+de_bulk_dt
+```
+
+```{r}
+de_dt <- merge(de_single_cell_dt, de_bulk_dt, by = "gene_name", suffixes = c("_single_cell", "_bulk"))
+de_dt
+```
+
+
+```{r plot correlation all genes}
+cor.test(rnorm(100), rnorm(100))
+de_dt[, {
+  p1 <- .SD %>% ggplot(aes(x= log2FoldChange_single_cell, y=log2FoldChange_bulk)) + ggpointdensity::geom_pointdensity() + ggtitle(paste0(cell_type))
+  print(p1)
+  p1 <- p1 + geom_smooth(method = "deming", color= "black", formula = y ~ x) + ggpubr::stat_cor()
+  print(p1)
+}, by = .(cell_type)] %>% invisible()
+```
+
+    
+
+```{r plot correlation significant in bulk only}
+de_dt[padj_bulk < 0.1][, {
+  p1 <- .SD %>% ggplot(aes(x= log2FoldChange_single_cell, y=log2FoldChange_bulk)) + ggpointdensity::geom_pointdensity() + ggtitle(paste0(cell_type))
+  print(p1)
+  p1 <- p1 + geom_smooth(method = "deming", color= "black", formula = y ~ x) + ggpubr::stat_cor()
+  print(p1)
+}, by = .(cell_type)] %>% invisible()
+```   
+    
+```{r plot correlation significant in both only}
+de_dt[padj_single_cell < 0.5][padj_bulk < 0.5][, {
+  p1 <- .SD %>% ggplot(aes(x= log2FoldChange_single_cell, y=log2FoldChange_bulk)) + ggpointdensity::geom_pointdensity() + ggtitle(paste0(cell_type))
+  print(p1)
+  p1 <- p1 + geom_smooth(method = "deming", color= "black", formula = y ~ x) + ggpubr::stat_cor()
+  print(p1)
+}, by = .(cell_type)] %>% invisible()
+```   
+
+
+```{r compute adjusted pvalues conditioned on bulk}
+cond_de_dt <- copy(de_dt)
+cond_de_dt[, padj_cond := 1]
+cond_de_dt[padj_bulk<0.1, padj_cond := p.adjust(pvalue_single_cell, method = "BH"), by = .(cell_type)]
+setorder(cond_de_dt, padj_cond, pvalue_single_cell)
+cond_de_dt[padj_cond < 0.1]
+fwrite(cond_de_dt, fs::path(results_dir, "DE_per_cell_type_conditioned_on_bulk.tsv"), sep = "\t")
+```
+
+
+```{r volcanos conditioned on bulk}
+cond_de_dt[, change_in_bulk := ifelse(log2FoldChange_bulk>0, "up", "down")]
+cond_de_dt[, {
+  p <- .SD%>%
+    ggplot(aes(y=-log10(pvalue_single_cell), x=log2FoldChange_single_cell, color=padj_cond)) + 
+    scale_color_viridis_c(trans="sqrt", limits = 0:1) +
+    geom_point() +
+    ggrepel::geom_text_repel(aes(label=gene_name), data=.SD[order(padj_cond, pvalue_single_cell)[1:20]], color="black") +
+    ggtitle(paste0(cell_type)) +
+    NULL
+  print(p)
+  p <- .SD%>%
+    ggplot(aes(y=-log10(pvalue_single_cell), x=log2FoldChange_single_cell, color=change_in_bulk)) + 
+    geom_point() +
+    ggrepel::geom_text_repel(aes(label=gene_name), data=.SD[order(padj_cond, pvalue_single_cell)[1:20]], color="black") +
+    ggtitle(paste0(cell_type)) +
+    NULL
+  print(p)
+  p <- .SD%>%
+    ggplot(aes(y=-log10(pvalue_single_cell), x=log2FoldChange_single_cell, color=log2FoldChange_bulk)) + 
+    geom_point() +
+    ggrepel::geom_text_repel(aes(label=gene_name), data=.SD[order(padj_cond, pvalue_single_cell)[1:20]], color="black") +
+    ggtitle(paste0(cell_type)) +
+    NULL
+  print(p)
+  NULL
+}, by= .(cell_type)]  %>% invisible()
+```
+
+```{r comparison conditioning}
+cond_de_dt[is.na(padj_single_cell), padj_single_cell:= 1]
+cond_de_dt[, {
+  p <- .SD %>%
+    ggplot(aes(x = padj_single_cell, y = padj_cond)) + geom_abline(color="gray") +
+    ggtitle(paste0(cell_type)) +
+    ggpointdensity::geom_pointdensity()
+  print(p)
+  p <- .SD %>% ggplot(aes(x = -log10(padj_single_cell), y = -log10(padj_cond))) +
+    geom_abline(color="gray") +
+    geom_point() +
+    ggtitle(paste0(cell_type)) +
+    NULL
+  print(p)
+  NULL
+}, by= .(cell_type)] %>% invisible()
+```
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,54 @@
+Package: sir
+Title: siR
+Version: 0.0.0.9011
+Authors@R: person("Jan", "Gleixner", email = "jan.gleixner@gmail.com", role = c("aut", "cre"))
+Description: Provide helper functions for single cell analysis and define dependencies.
+Depends: R (>= 3.5),
+  schelpr
+Remotes:
+  jan-glx/analysismaker,
+  jan-glx/schelpr,
+  dgrtwo/ebbr,
+  const-ae/glmGamPoi
+Imports: 
+  analysismaker,
+  ape,
+  binom,
+  biobroom,
+  biomaRt,
+  data.table,
+  DESeq2,
+  digest,
+  ebbr,
+  dplyr,
+  fs,
+  gghighlight,
+  glmGamPoi (>= 1.5.4),
+  ggnewscale,
+  ggfx,
+  ggplot2,
+  ggrastr,
+  ggrepel,
+  ggupset,
+  IHW,
+  irlba,
+  knitr,
+  magrittr,
+  Matrix.utils,
+  memoise,
+  rmarkdown,
+  readr,
+  Seurat (>= 3.0),
+  scales,
+  schelpr,
+  tidyr,
+  tidyverse
+Suggests:
+  msigdbr
+License: GPL-3
+Encoding: UTF-8
+BiocViews: 
+LazyData: true
+VignetteBuilder: knitr
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1

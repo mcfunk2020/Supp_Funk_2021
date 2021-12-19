@@ -1,0 +1,267 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  de_results_dir: "results_ci_human/analysis_in_vivo/4_differential_expression/"
+  dde_results_dir: "results_ci_human/analysis_in_vivo/5_differential_differential_expression_II/"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := factor(Tx_run_number)][]
+meta_dt
+```
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := factor(Tx_run_number)]
+cell_types <-  agg_dt[cell_type!= "pseudo bulk", unique(cell_type)]
+```
+
+```{r load de results}
+de_dt <- fread(fs::path(de_results_dir, "DE_samples_as_replicates.tsv"))
+de_dt %>% head()
+```
+
+```{r load DDE results}
+dde_dt <- fread(fs::path(dde_results_dir, "dde_one_vs_sum_of_rest_dt.tsv"), sep = "\t")
+dde_dt[abs(lfc)>10, `:=`(lfc = sign(lfc) *Inf, se_lfc = Inf)]
+dde_dt %>% head()
+```
+
+```{r}
+dde_dt <- de_dt[cell_type %in% "pseudo bulk", .(pseudo_bulk_main_effect_pval = p.value, pseudo_bulk_main_effect_adj_pval = p.adjusted, pseudo_bulk_main_effect_lfc = estimate, gene)][dde_dt, on = .(gene)]
+dde_dt[, is_affected_in_pseudo_bulk := pseudo_bulk_main_effect_adj_pval<0.1]
+dde_dt[, glob_weighted_adj_pval := 1]
+dde_dt[pseudo_bulk_main_effect_adj_pval<0.1, glob_weighted_adj_pval := p.adjust(pval, method = "BH")]
+dde_dt[, rel_effect := lfc/pseudo_bulk_main_effect_lfc]
+dde_dt[glob_adj_pval<0.1]
+dde_dt[glob_weighted_adj_pval<0.1]
+```
+
+```{r}
+FDR <- 0.1
+dde_dt %>% ggplot(aes(x = -lfc, y = -log10(pval))) +
+  ggrastr::rasterize(geom_point(aes(color = ifelse(glob_adj_pval < FDR, ifelse(-lfc>0, "up", "down"), "unknown")))) +
+  scale_color_manual(breaks = c("down", "up", "unknown"), labels = str_wrap(c("down regulated with age compared to other cells", "up regulated with age compared to other cells", "not significant"), width = 20), values = c(sir:::maja_blue, sir:::maja_red, sir:::maja_gray)) +
+  guides(color = guide_legend(title = element_blank(), )) -> p1
+p1
+```
+
+
+```{r}
+select_n_with_largest_certain_effect <- function(beta, beta_se = abs(beta/qnorm(pval/2)), pval = qnorm(-abs(beta/beta_se))*2, n_to_select = 10, n_total = length(beta_se), alpha = 0.1) {
+  best_alpha <- sort(pval)[n_to_select]*n_total/n_to_select
+  if(alpha<best_alpha) {
+    warning("best achiveable alpha=", best_alpha)
+    alpha <- best_alpha
+  }
+  #min_effect_size <- (abs(beta)+beta_se*qnorm(alpha*n_to_select/n_total))
+  beta_reg <- 1 / (1/abs(beta) + 1/10)
+  min_effect_size <- abs(beta_reg)*(1-abs(qnorm(alpha*n_to_select/n_total))/abs(qnorm(pval/2)))
+  rank(-min_effect_size) <= n_to_select
+}
+   #rank(- (abs(beta)+beta_se*qnorm(alpha*n_to_select/n_total))) <= n_to_select
+
+labelled_subset_dt <- dde_dt[select_n_with_largest_certain_effect(lfc, pval = pval, n_to_select = 5)]
+
+if(nrow(labelled_subset_dt)>0) { 
+  p2 <- p1 + ggrepel::geom_text_repel(
+      aes(label = paste0(affected_gene, " (", cell_type, ")")), 
+      data = labelled_subset_dt, 
+      min.segment.length = 0,
+      #label_size = 2.5, 
+      force_pull = 0.01, 
+      point.padding = 0.7,
+      box.padding = 0.7,
+      force = 100,
+     # nudge_y = 10,
+      color = "black",     # text color
+      bg.color = "white", # shadow color
+      bg.r = 0.2,          # shadow radius
+  max.overlaps = Inf) + 
+    scale_y_continuous(expand = expansion(c(0.05, 0.1), c(0, 0)))+
+    geom_point(data = labelled_subset_dt,
+               aes(color = ifelse(glob_adj_pval < FDR, ifelse(lfc>0, "up", "down"), "unknown")))
+}
+p2
+```
+```{r}
+FDR <- 0.1
+dde_dt %>% ggplot(aes(x = -lfc, y = -log10(pval))) +
+  ggrastr::rasterize(geom_point(aes(color = ifelse(glob_weighted_adj_pval < FDR, cell_type, ifelse(pseudo_bulk_main_effect_adj_pval<0.1, "unknown", "not_tested"))))) +
+  #scale_color_manual(
+  #  breaks = c("down", "up", "unknown", "not_tested"), 
+  #  labels = str_wrap(c("down regulated with age compared to other cells", "up regulated with age compared to other cells", "not significant", "no main effect"), width = 20), 
+  #  values = c(sir:::maja_blue, sir:::maja_red, "gray80", "gray90")) +
+  scale_color_cell_type(limits=identity) +
+  guides(color = guide_legend(title = element_blank())) +
+  labs(x = "Differential log2 fold change (aged/young)") +
+  NULL -> p1
+p1
+```
+
+```{r}
+labelled_subset_dt <- dde_dt[pseudo_bulk_main_effect_pval <0.1][select_n_with_largest_certain_effect(lfc, pval = pval, n_to_select = 10)]
+
+if(nrow(labelled_subset_dt)>0) { 
+  p2 <- p1 + ggrepel::geom_text_repel(
+      aes(label = paste0(affected_gene, " (", cell_type, ")")), 
+      data = labelled_subset_dt, 
+      min.segment.length = 0,
+      #label_size = 2.5, 
+      force_pull = 0.01, 
+      point.padding = 0.7,
+      box.padding = 0.7,
+      force = 100,
+     # nudge_y = 10,
+      color = "black",     # text color
+      bg.color = "white", # shadow color
+      bg.r = 0.2,          # shadow radius
+  max.overlaps = Inf) + 
+    scale_y_continuous(expand = expansion(c(0.05, 0.1), c(0, 0)))+
+    geom_point(data = labelled_subset_dt,
+               aes(color = ifelse(glob_weighted_adj_pval < FDR, ifelse(-lfc>0, "up", "down"), ifelse(pseudo_bulk_main_effect_adj_pval<0.1, "unknown", "not_tested"))))
+}
+p2
+```
+
+
+```{r}
+labelled_subset_dt
+dde_dt[gene %in% c("Itgam")]
+genes_of_interest <- rbind(labelled_subset_dt, dde_dt[gene %in% c(c("Itgam", "Cd75", "Ciita"))], dde_dt[,.SD[1,], by= .(affected_gene)][seq_len(.N)<=6])[, unique(gene)]
+genes_of_interest
+```
+
+```{r, expression-with-error-bars-and-alpha, fig.height=3.5}
+expression_plot <- function(dt) {
+  this_dodge <- position_dodge(width=0.4)
+  cpm_limits <-  c(0.9, 1.1) *dt[, range(CPM)]
+  
+  dt %>% ggplot(aes(x = cell_type, y = CPM, ymin = CPM_lower, ymax = CPM_upper, color = condition, group = sample_id)) +
+    geom_errorbar(alpha = 0.3, width = 0.3, position = this_dodge) +
+    geom_line(aes(group = sample_id, linetype = Tx_run_number), position = this_dodge, alpha = 0.3) +
+    geom_point(aes(shape = Tx_run_number), size = 2, position = this_dodge) +
+    scale_x_cell_type() +
+    facet_wrap("gene") +
+    scale_y_log1p() +
+    coord_cartesian(ylim = cpm_limits) +
+    scale_color_age() +
+    theme(aspect.ratio = 2/3) +
+    NULL
+}
+agg_dt[gene %in% genes_of_interest, ] %>% print_by(by = "gene", expression_plot) 
+```
+
+```{r with effects}
+gene_of_interest <- "Cd74"
+effects_dt <- de_dt[gene %in% gene_of_interest][, lfc := estimate]
+effects_dt <- merge(effects_dt[cell_type =="pseudo bulk", .(lfc =estimate, pval=p.value, gene)], effects_dt[, .(lfc =estimate, pval=p.value, gene, cell_type)], by="gene", suffixes= c("_main", "_cell_type"))
+effects_dt
+mean_expression_dt <- agg_dt[gene %in% gene_of_interest][, .(count = sum(count), total_count_in_celltype = sum(total_count_in_sample_x_cell_type)) ,by= .(gene, cell_type, condition)][, c("CPM", "CPM_lower", "CPM_upper") :=  binom::binom.exact(count,total_count_in_celltype)[, c("mean", "lower", "upper")]*1E6, by=.(cell_type,condition)][]
+effects_dt <- mean_expression_dt[condition=="young"][effects_dt, on = .(gene, cell_type)]
+effects_dt <- dde_dt[, .(cell_type, gene, pval_cell_type_specific = pval, lfc_cell_type_specific = lfc)][effects_dt, on = .(cell_type, gene)]
+effects_dt
+
+this_dodge <- position_dodge(width=0.2)
+dde_features_dt <- dde_dt[agg_dt[gene %in% gene_of_interest], on = .(affected_gene=gene, cell_type)]
+arrow_size <- 1
+this_arrow <- arrow(angle = 20, length = unit(0.25, "cm"), type = "closed")
+with_my_shadow <- function(..., dist = 2, x_offset = dist, y_offset = dist, sigma = dist) ggfx::with_shadow(..., x_offset = x_offset, y_offset = y_offset, sigma = sigma)
+
+agg_dt[gene %in% gene_of_interest, ] %>% expression_plot() +
+    ggnewscale::new_scale_color() +
+    with_my_shadow(geom_segment(
+      data = effects_dt, 
+      aes(xend = cell_type, yend = 2^(log2(CPM) - lfc_main), group = 1, color = "main effect"),
+      size = arrow_size,
+      position= position_nudge(-0.1),
+      arrow = this_arrow
+    )) +
+    with_my_shadow(geom_segment(
+      data = effects_dt,
+      aes(xend = cell_type, yend = 2^(log2(CPM) - lfc_cell_type), color = "total effect\n(cell type specific)", group = 1),
+      size = arrow_size,
+      position = position_nudge(0.1),
+      arrow = this_arrow
+    )) +
+    with_my_shadow(geom_segment(
+      data = effects_dt,
+      aes(xend = cell_type, y = 2^(log2(CPM) - lfc_main), yend =  2^(log2(CPM) - lfc_main - lfc_cell_type_specific), color = "cell type specific effect", group = 1),
+      position= position_nudge(-0.1),
+      size = arrow_size,
+      arrow = this_arrow
+    )) +
+    scale_color_manual("", values= c("red", "gray", "black")) +
+    theme(aspect.ratio = 2/3) +
+    NULL
+ggsave("Cd74_with_eefects.svg", width = FIG_WIDTH, height = FIG_HEIGHT, bg="transparent")
+```
+
+
+
+```{r, uncertainty as alpha}
+expression_plot <- function(dt) {
+  dt <- data.table(dt)
+  this_dodge <- position_dodge(width=0.3)
+  cpm_limits <-  c(0.9, 1.1) *dt[, range(CPM)]
+  dt %>% ggplot(aes(x = cell_type, y = CPM, ymin = CPM_lower, ymax = CPM_upper, color = condition, group = sample_id, alpha = (log1p(CPM_upper)-log1p(CPM_lower))/diff(log1p(cpm_limits)))) +
+    #geom_errorbar(aes(alpha = 1/(log1p(CPM_upper)-log1p(CPM_lower))), width = 0.3, position = this_dodge) +
+    geom_line(aes(group = sample_id, linetype = Tx_run_number), position = this_dodge, alpha =0.3) +
+    geom_point(aes(shape = Tx_run_number), size = 2, position = this_dodge) +
+    facet_wrap("gene") +
+    scale_x_cell_type() +
+    scale_y_log1p() +
+    coord_cartesian(ylim = cpm_limits) +
+    scale_color_age() +
+    scale_alpha_continuous("uncertainty", trans = "reverse", range= c(0.1, 1), limits = c(1, 0 ), breaks=seq(0,1,0.25), label=scales::percent) + #95% CI size
+    theme(aspect.ratio = 2/3) +
+    NULL
+}
+agg_dt[gene %in% genes_of_interest, ][cell_type != "pseudo bulk"] %>% print_by(by = "gene", expression_plot) 
+```
+
+```{r, no-errorbars-no-pseudo-bulk}
+expression_plot <- function(dt) {
+  this_dodge <- position_dodge(width=0.3)
+  dt %>% ggplot(aes(x = cell_type, y = CPM, ymin = CPM_lower, ymax = CPM_upper, color = condition, group = sample_id)) +
+    #geom_errorbar(aes(alpha = 1/(log1p(CPM_upper)-log1p(CPM_lower))), width = 0.3, position = this_dodge) +
+    geom_line(aes(group = sample_id, linetype = Tx_run_number), position = this_dodge) +
+    geom_point(aes(shape = Tx_run_number), size = 2, position = this_dodge) +
+    scale_x_cell_type() +
+    facet_wrap("gene", scales = "free_y", nrow = 2) +
+    scale_y_log1p() +
+    scale_color_age() +
+    scale_alpha_continuous(trans = "identity", range= c(0.01, 0.3)) +
+    theme(aspect.ratio = 2/3) +
+    NULL
+}
+agg_dt[gene %in% genes_of_interest, ][cell_type != "pseudo bulk"] %>% print_by(by = "gene", expression_plot) 
+```
+
+
+
+

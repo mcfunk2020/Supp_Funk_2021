@@ -1,0 +1,116 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  only_untreated: !r FALSE
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  seurat_object_dir: "results_ci_human/analysis_in_vivo/2x2_manual_cell_type_assignent" #analysis_untreated_with_in_vivo
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+
+library(scITD)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := factor(Tx_run_number)][]
+meta_dt
+```
+```{r}
+so <- readRDS(fs::path(seurat_object_dir, "seurat_object.rds")) 
+so@meta.data
+```
+
+```{r}
+so[["donors"]] <- so$sample_id
+so[["ctypes"]] <- as.character(so$cell_type)
+
+shared_cell_types <- unique(schelpr::meta_and_reductions(so)[, .(n_cells = .N), by=.(sample_id, ctypes)][n_cells>5][, n_sample := .N, by=ctypes][n_sample==length(unique(sample_id)),ctypes])
+so_container <- make_new_container(initialize_params(shared_cell_types, ncores = 1), seurat_obj = so)
+so_container <- form_tensor(so_container)
+
+so_container <- run_tucker_ica(so_container, ranks=c(2,3), tucker_type = 'regular', rotation_type = 'hybrid')
+
+# get donor scores-metadata associations
+so_container <- get_meta_associations(so_container, vars_test=c('condition','Tx_run_number'), stat_use='pval')
+
+# plot donor scores
+so_container <- plot_donor_matrix(so_container, meta_vars=c('condition','Tx_run_number'),
+                                    show_donor_ids = TRUE,
+                                    add_meta_associations='pval')
+# plot donor scores
+so_container <- plot_donor_matrix(so_container, meta_vars=c('condition','Tx_run_number'),
+                                    show_donor_ids = TRUE,
+                                    add_meta_associations='pval')
+
+# show the donor scores heatmap
+so_container$plots$donor_matrix
+```
+
+
+```{r}
+so_container <- get_lm_pvals(so_container)
+so_container <- get_all_lds_factor_plots(so_container, 
+                                           use_sig_only=FALSE,
+                                           nonsig_to_zero=FALSE,
+                                           sig_thresh=.02,
+                                           display_genes=FALSE,
+                                           gene_callouts = TRUE,
+                                           callout_n_gene_per_ctype=3,
+                                           show_var_explained = TRUE)
+
+# arrange the plots into a figure and show the figure
+myfig <- render_multi_plots(so_container,data_type='loadings')
+myfig
+```
+```{r}
+so_container <- run_gsea_one_factor(so_container, factor_select=2, method="fgsea", thresh=0.2, db_use=c("GO"), signed=TRUE)
+```
+
+# why is the differentiation between intrinsic and extrinsic factors important
+# you introduced ATAC as it would give more information on the epigenetic state than RNA expression but then mostly show that it recapitulates the RNAseq data (wich is epigenetic state)
+```{r}
+so_container <- determine_ranks_tucker(so_container, max_ranks_test=c(5,5),
+  shuffle_level='cells', 
+  num_iter=10, 
+  norm_method='trim',
+  scale_factor=10000,
+  scale_var=TRUE,
+  var_scale_power=2)
+
+so_container$plots$rank_determination_plot
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

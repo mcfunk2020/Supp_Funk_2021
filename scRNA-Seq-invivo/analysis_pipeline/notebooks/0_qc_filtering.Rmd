@@ -1,0 +1,157 @@
+---
+title: "Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche - qc filtering"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  data_dir: "raw_data"
+  results_dir: "processed_data"
+  subset_10x_samples: !r c("18.1", "18.2", "18.3")
+  only_untreated: !r FALSE
+---
+```{r do setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+library(sir)
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+cell_types_df <- fread("SI_cell_type_markers.tsv")
+cell_types_df
+```
+
+```{r}
+features_df <- fread("SI_feature_gene_lists.tsv")
+features_df
+```
+
+```{r}
+meta_df <- fread("Sample meta - Sheet1.tsv")
+meta_df[, data_dir := fs::path(data_dir, "cellranger_output")]
+meta_df
+```
+
+```{r}
+meta_df %<>% filter(`Tx_run_number` %in% subset_10x_samples)
+
+if (only_untreated) {
+  meta_df %<>% filter(`treatment` %in% "untreated")
+}
+
+meta_df[, sample_id2 := .I]
+meta_df[, Tx_run_number := factor(Tx_run_number)]
+data_dirs <- meta_df[, setNames(fs::path(data_dir, sample_name, "outs/filtered_feature_bc_matrix"), sample_id2)]
+
+so <- Read10X(data_dirs) %>% CreateSeuratObject()
+tmp <- data.table(meta_df)[, sample_id2 := factor(sample_id2)][data.table(so@meta.data, keep.rownames = "cell"), on = .(sample_id2 = orig.ident)]
+so@meta.data <- data.frame(tmp, row.names = tmp$cell)
+so@meta.data
+so
+```
+
+
+```{r}
+mito.features <- grep(pattern = "^mt-", x = rownames(so), value = TRUE)
+so[['fraction_mito']] <- Matrix::colSums(x = GetAssayData(so, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(so, slot = 'counts'))
+```
+
+```{r}
+thresholds_dt <- data.table(
+  Tx_run_number = factor(c(9,    11,    12,   17,  18.1,  18.2,  18.3)),
+  min_nCount_RNA =    c(2000,  1000,  2000, 4000, 10000, 10000, 10000),
+  max_frac_mito =    c(0.025, 0.025, 0.025, 0.10,  0.15,  0.15,  0.15),
+  very_min_nCount_RNA = 500
+)
+thresholds_dt <- thresholds_dt[meta_df[, .(Tx_run_number, sample_id)], on = .(Tx_run_number)]
+thresholds_dt[sample_id == "Tx11_9", `:=`(min_nCount_RNA = 7000, max_frac_mito = 0.05)]
+thresholds_dt
+```
+
+
+```{r}
+mm <- meta_and_reductions(so)
+mm <- thresholds_dt[mm, on = .(sample_id)]
+
+mm %>% ggplot(aes(x=nCount_RNA, y=nFeature_RNA , color=sample_id)) + geom_cell()
+mm %>% ggplot(aes(x=nCount_RNA, y=fraction_mito, color=sample_id)) + geom_cell() + scale_x_log()
+
+qc_plot_pre_facetting  <-  mm %>% ggplot(aes(x=nCount_RNA, y=pmin(0.15, fraction_mito), color=sample_id)) + 
+  geom_cell(data = mm %>% select(-sample_id, -Tx_run_number), color="gray", size=0.1) + 
+  geom_point(size=0.1) + 
+  scale_x_log_eng() + 
+  geom_vline(aes(xintercept = min_nCount_RNA),  linetype="dotted") + 
+  geom_hline(aes(yintercept = max_frac_mito), linetype="dashed") +
+  NULL
+
+qc_plot_pre_facetting + facet_wrap(vars(Tx_run_number), labeller = label_both)
+```
+
+```{r}
+ggplot(mm[nCount_RNA>very_min_nCount_RNA], aes(x=nCount_RNA, y= fraction_mito)) +
+    ggrastr::rasterize(ggpointdensity::geom_pointdensity()) +
+    scale_x_log() + 
+    scale_y_sqrt() +
+    geom_vline(aes(xintercept = min_nCount_RNA), linetype="dotted", color= "red") + 
+    geom_hline(aes(yintercept = max_frac_mito ), linetype="dashed", color= "red") +
+      theme(
+    panel.grid.major.x = element_line(color="gray95", size = 0.3),
+    panel.grid.minor.x = element_line(color="gray95", size = 0.1),
+    panel.grid.major.y = element_line(color="gray95", size = 0.3),
+    panel.grid.minor.y = element_line(color="gray95", size = 0.1),
+    legend.justification = c(1, 1), legend.position = c(1, 1)
+  ) +
+    NULL
+ggsave("qc_filter.pdf", width = FIG_WIDTH, height = FIG_HEIGHT, bg = "transparent")
+
+mm[, {
+  p1 <- ggplot(.SD[nCount_RNA>very_min_nCount_RNA], aes(x=nCount_RNA, y=pmin(1, fraction_mito))) +
+    ggpointdensity::geom_pointdensity() +
+    facet_wrap("sample_id") +
+    scale_x_log_eng() + 
+    scale_y_sqrt() +
+    geom_vline(aes(xintercept = min_nCount_RNA), linetype="dotted", color= "red") + 
+    geom_hline(aes(yintercept = max_frac_mito ), linetype="dashed", color= "red") +
+    NULL
+  print(p1)
+  NULL
+}, keyby= .(Tx_run_number)
+]
+```
+
+```{r}
+so@meta.data <- cbind(so@meta.data, thresholds_dt[so@meta.data, .(min_nCount_RNA, max_frac_mito) , on = .(sample_id)])
+```
+
+
+```{r qc stats before filtering}
+generate_summary <- function (so) meta_and_reductions(so)[, .(total_count = sum(nCount_RNA), n_cells = .N, mean_UMI_per_cell = mean(nCount_RNA), mean_frac_mito = mean(fraction_mito)), by= .(sample_name)]
+so %>% generate_summary
+```
+
+```{r min UMI filtering}
+so %<>% subset(subset=nCount_RNA>min_nCount_RNA) 
+so %>% generate_summary
+```
+
+```{r max fraction mito filtering}
+so %<>% subset(subset=fraction_mito<max_frac_mito)
+so %>% generate_summary
+```
+
+```{r whole sample qualtiy filtering}
+sample_removed_for_low_cell_count <- (so %>% generate_summary)[n_cells < 100, sample_name ]
+sample_removed_for_low_cell_count
+so %<>% subset(subset = sample_name %in% c(sample_removed_for_low_cell_count), invert=TRUE)
+so %>% generate_summary
+```
+
+
+```{r saving}
+write_rds(so, fs::path(results_dir, "seurat_object.rds"))
+```

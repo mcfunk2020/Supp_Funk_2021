@@ -1,0 +1,109 @@
+---
+title: Sample PCA embedding - Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := factor(Tx_run_number)][]
+meta_dt
+```
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := factor(Tx_run_number)][]
+```
+
+## Sample distance / linear embedding
+PCA embedding of all samples from variance stabilizing transformed expression space indicates condition (age) 
+```{r vst-pca-embedding samples each celltype}
+
+PC_labs <- function(vst_pca) {
+  do.call(labs, as.list(setNames(paste0("PC", 1:2, " (", scales::percent(attr(vst_pca, "percentVar")),")"), c("x", "y"))))
+}
+
+dds <- agg_dt[
+  ,{
+  sample_id_fct <- factor(sample_id)
+  gene_fct <- factor(gene)
+  countData <- sparseMatrix(as.integer(gene_fct), as.integer(sample_id_fct), x = count, 
+                            dimnames=list(levels(gene_fct), levels(sample_id_fct)))
+  
+  colData <-  meta_dt[levels(sample_id_fct),]
+
+  dds <- DESeq2::DESeqDataSetFromMatrix(
+    countData, 
+    colData,
+    design = ~ 1
+  )
+  vst_pca <- DESeq2::plotPCA(DESeq2::varianceStabilizingTransformation(dds), intgroup = colnames(colData), returnData =TRUE)
+  vst_pca_dt <- vst_pca %>% as.data.table(keep.rownames = "sample_id_2")
+
+  p1 <- vst_pca_dt %>%
+    ggplot(aes(x=PC1, y=PC2, color=condition, group=mouse)) + 
+    geom_point(size=5) + 
+    scale_color_age() +
+    ggtitle(paste0(cell_type)) +
+    PC_labs(vst_pca) +
+    NULL
+  
+  print(p1)
+  NULL
+}, by= cell_type]
+
+
+```
+
+```{r vst-pca-embedding sample-x-celltype}
+agg_dt[ , sample_id_cell_type := interaction(sample_id, cell_type)]
+
+countData <- with(agg_dt[cell_type != "pseudo bulk"], schelpr::long2sparse(rows =  gene, cols = sample_id_cell_type, values = count))
+colData <- agg_dt[, .SD[1, .(sample_id, line, condition, mouse, Tx_run_number, sample_type, cell_type)], keyby = .(sample_id_cell_type), ][colnames(countData),]
+
+dds <- DESeq2::DESeqDataSetFromMatrix(
+  countData,
+  colData,
+  design = ~ 1
+)
+
+vst_pca <- DESeq2::plotPCA(DESeq2::varianceStabilizingTransformation(dds), intgroup = colnames(colData), returnData =TRUE)
+vst_pca_dt <- vst_pca %>% as.data.table(keep.rownames = "sample_name")
+
+
+p1 <- vst_pca_dt %>%
+  ggplot(aes(x=PC1, y=PC2, color=cell_type, shape=condition, group=mouse)) + 
+  geom_point(data = vst_pca_dt[condition=="young",], size=3, aes(color=cell_type)) + 
+  geom_point(data = vst_pca_dt[condition=="aged",], size=3, aes(color=stage(cell_type, after_scale = colorspace::darken(color, amount = 0.3)))) + 
+  scale_color_cell_type() +
+  PC_labs(vst_pca)
+  #ggrepel::geom_text_repel(aes(label=sample_name), point.padding = 1)
+  NULL
+p1
+
+```
+
+
+
+

@@ -1,0 +1,124 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  model_formula: !r ~ condition + Tx_run_number
+  only_untreated: !r TRUE
+  processed_data_dir: "results_ci_human/analysis_in_vivo/2x2_manual_cell_type_assignent" #analysis_untreated_with_in_vivo
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+cell_types_df <- fread("SI_cell_type_markers.tsv")
+cell_types_df
+```
+
+```{r}
+features_df <- fread("SI_feature_gene_lists.tsv")
+features_df
+```
+
+```{r}
+meta_df <- fread("Sample meta - Sheet1.tsv")
+meta_df
+meta_dt <- data.table(meta_df, key="sample_id")[, Tx_run_number:=factor(Tx_run_number)][]
+meta_dt
+```
+
+```{r}
+cell_cycle_components <- c("ccs" , "ccg2m" )
+```
+
+
+Saving processed data for later downstream analysis (not long term)
+```{r}
+si <- readRDS(fs::path(processed_data_dir, "seurat_object.rds")) 
+```
+
+
+
+```{r recode cell types}
+cell_types <- unique(si@meta.data[, c("cell_type")])
+cell_types
+si@meta.data[, c("cell_type2")]  <-  si@meta.data[, c("cell_type")]# %>% 
+  #recode("Enterocytes"="Stem cells &\nEnterocytes", "Stem cells?"="Stem cells &\nEnterocytes", "Stem cells"="Stem cells &\nEnterocytes", "Enterocytes?"="Stem cells &\nEnterocytes") %>% 
+  #stringr::str_replace("\n", " ")
+unique(si@meta.data[, c("cell_type2")] )
+cell_types <- unique(si@meta.data[, c("cell_type2")])
+cell_types
+
+si@meta.data$group <- paste(si@meta.data$cell_type2, "_x_" , si@meta.data$sample_id)
+cell_type_sample_count_dt <- as.data.table(si@meta.data)[,.(n_cells=.N), by=.(cell_type = cell_type2, sample_id, group)]
+
+cell_type_counts_dt <- cell_type_sample_count_dt[, n_cells_sample := sum(n_cells), by = sample_id][]
+```
+
+
+```{r}
+agg_dt <- aggregate_log_normalized_expression(
+    si@assays$RNA@counts, #subset to detected genes
+    group = si@meta.data$group,
+    group_name = "group"
+) %>% setnames(c("n_cells_of_group", "count_sum"), c("n_cells", "count"))
+
+agg_dt <- cell_type_sample_count_dt[agg_dt, on = .(group, n_cells)][, group := NULL]
+```
+
+```{r}
+agg_pseudobulk_dt <- aggregate_log_normalized_expression(
+    si@assays$RNA@counts, #subset to detected genes
+    group = si@meta.data$sample_id,
+    group_name = "group"
+) %>% setnames(c("n_cells_of_group", "count_sum", "group"), c("n_cells", "count", "sample_id"))
+agg_pseudobulk_dt[, `:=`(n_cells_sample = n_cells, cell_type = "pseudo bulk")]
+```
+
+
+```{r add pseudo bulk (global average)}
+agg_dt <- rbind(
+  agg_pseudobulk_dt,
+  agg_dt[!is.na(cell_type)]
+)
+agg_dt[, expression_mean_of_gene := mean(expression_mean), by = gene]
+agg_dt[, expression_sem := sqrt(pmax(expression_variance, expression_counting_variance)/n_cells), by = gene]
+```
+
+
+```{r join meta data}
+agg_dt <- meta_dt[agg_dt, on=.(sample_id)]
+
+if(params$only_untreated)
+  agg_dt <- agg_dt[treatment=="untreated"]
+
+agg_dt[, count:=as.integer(count)]
+agg_dt[, cpm:=count/sum(count)*1E6, by=.(cell_type, sample_id)]
+agg_dt[, c("CPM", "CPM_lower", "CPM_upper") :=  binom::binom.exact(count,sum(count))[, c("mean", "lower", "upper")]*1E6, by=.(cell_type, sample_id)]
+
+
+agg_dt[, total_count_in_sample_x_cell_type := sum(count), by=.(cell_type, sample_id)]
+
+
+agg_dt[, .(umi_count=sum(count)), by=cell_type][cell_type_counts_dt[, .(n_cells=sum(n_cells)), by=cell_type], on =.(cell_type)][, umi_count_per_cell:=umi_count/n_cells][]
+
+
+fwrite(agg_dt, file = fs::path(results_dir, "aggregated_expression.tsv"), sep = "\t")
+```

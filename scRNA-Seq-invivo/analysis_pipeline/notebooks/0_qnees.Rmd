@@ -1,0 +1,270 @@
+---
+title: "Quick knee analysis"
+params:
+  ILSE: 19360
+  data_dir: "raw_data/data"
+  results_dir: "results"
+---
+
+```{r setup, echo=FALSE, results='asis'}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R"))
+```
+
+```{r imports}
+library(data.table)
+library(ggplot2)
+library(tidyverse)
+library(gtable)
+library(sir)
+
+qnee_result_folder <- "raw_data/qnee"
+dir.create(qnee_result_folder, showWarnings = FALSE)
+```
+
+```{r}
+df  <- fread(file.path(data_dir, paste0(ILSE, "_meta.tsv")))
+df[,  c("uid_lane", "read"):=as.data.table(str_match(FASTQ_FILE, "^(.*)_R?(\\d)\\.fastq\\.gz$")[,-1])]
+
+# convert old format to new format
+setnames(df,"SAMPLE_ID", "SAMPLE_NAME", skip_absent = TRUE)
+setnames(df,"MATE", "READ", skip_absent = TRUE)
+
+df[, c("SAMPLE_NAME_10X", "INDEX") := data.table(str_match(SAMPLE_NAME, "^(.*)_([^_]+)$")[,-1])]
+df[, SAMPLE_NAME_10X := str_replace_all(SAMPLE_NAME_10X, fixed("."), "_")]
+
+df[, PATH:= file.path(data_dir, RUN_ID, uid_lane, "fastq", FASTQ_FILE)]
+
+
+res_df  <-  df[!is.na(SAMPLE_NAME_10X)][READ==1][, command:=paste0("zcat ", paste0(PATH, collapse=' '), " | /home/gleixner/gleixner/qnee/qnee 16 > ", qnee_result_folder, "/", SAMPLE_NAME_10X, "_cbc_counts.tsv &"), by=.(SAMPLE_NAME_10X)]  
+# res_df[, system(command), by=SAMPLE]
+res_df[, cat(command, sep = "\n"), by=command] %>% invisible
+cat("wait\n")
+
+```
+
+```{r}
+df[, new_path := fs::path("raw_data", "data_for_cellranger", sprintf("%s_S1_L%03d_R%d_001.fastq.gz", SAMPLE_NAME_10X, as.integer(interaction(uid_lane, INDEX, drop =TRUE)), READ)), by = SAMPLE_NAME_10X]
+df[!is.na(SAMPLE_NAME_10X)][, {fs::link_create(fs::path_rel(fs::path_real(PATH), fs::path_real(fs::path_dir(new_path))), new_path); NULL}, by= .(new_path)] %>% invisible()
+
+df[!is.na(SAMPLE_NAME_10X)][, cat(paste0("SAMPLES=(\n", paste0(sprintf("    \"%s\"\n", unique(SAMPLE_NAME_10X)), collapse = ""), ')\nfor SAMPLE in "${SAMPLES[@]}"; do bsub -q verylong -R "rusage[mem=50G]" ./run_cellranger.sh ${SAMPLE} ; done\n\n'))] %>% invisible()
+```
+
+
+```{r}
+sample_meta_dt <- fread("Sample meta - Sheet1.tsv")
+sample_meta_dt[, Tx_run_number := factor(Tx_run_number)]
+files <- list.files(path=qnee_result_folder, pattern = "^.*_cbc_counts\\.tsv$")
+dt <- rbindlist(lapply(files, function(file) fread(file = file.path(qnee_result_folder, file), col.names =  "n_reads_of_cbc")[, .(n_cbc = .N), keyby = n_reads_of_cbc][rev(seq_len(.N)),][, sample_name := str_match(file, "^(.*[^_])_+cbc_counts.tsv$")[2]]))
+dt[, sample := sample_id]
+dt
+```
+
+
+```{r}
+dt[, rank_of_cbc := cumsum(n_cbc), by=sample_name]
+dt[, idx := rank_of_cbc, by=sample_name]
+dt[, cumulative_n_reads := cumsum(n_reads_of_cbc*n_cbc), by=sample_name]
+dt[, cumulative_fraction_of_reads := cumulative_n_reads/last(cumulative_n_reads), by=sample_name]
+dt <- sample_meta_dt[dt, on = .(sample_name)]
+dt[, .SD[1], by=sample_name]
+```
+
+
+
+```{r}
+sub_dt <- dt[, .SD[data.table(cumulative_fraction_of_reads = seq(0, 1, length.out=500)), on = .(cumulative_fraction_of_reads), roll = "nearest"], by = sample_name]
+```
+
+
+```{r}
+ggplot(sub_dt, aes(x=idx,y=n_reads_of_cbc, color=condition, group=sample))+
+  geom_line(data=select(sub_dt, -line, -condition), size=1, color="grey")+
+  geom_line(size=1.5)+
+  scale_x_log_eng() +
+  scale_y_log_eng()  +
+  xlab("index of cell barcode sorted by total #reads") +
+  ylab("#reads of cell barcode") +
+  facet_grid(vars(),vars(line), labeller = label_both) +
+  NULL
+ggsave("results/joined_knee2.pdf", width=8, height=6)
+
+
+ggplot(sub_dt, aes(x=idx,y=n_reads_of_cbc, color=condition, group=sample))+
+  geom_line(data=select(sub_dt, -Tx_run_number, -condition), size=1, color="grey")+
+  geom_line(size=1.5)+
+  scale_x_log_eng() +
+  scale_y_log_eng()  +
+  xlab("index of cell barcode sorted by total #reads") +
+  ylab("#reads of cell barcode") +
+  facet_wrap(vars(Tx_run_number), labeller = label_both, nrow = 2) +
+  NULL
+ggsave("results/joined_knee_by_Tx_run_number.pdf", width=8, height=6)
+```
+
+
+```{r}
+this_samples <- df[, unique(SAMPLE_NAME_10X)]
+
+p1 <- ggplot(sub_dt[sample_name %in%this_samples], aes(y=n_reads_of_cbc,x=idx, group=sample, color=Tx_run_number, linetype=condition))+
+  geom_line(data = sub_dt, size=0.5, color= "gray") +
+  geom_line(size=1.5) +
+  scale_y_log() +
+  scale_x_log() +
+  coord_cartesian(xlim = c(50,50000)) +
+  NULL
+
+p2 <- ggplot(sub_dt[sample_name %in%this_samples], aes(y=n_reads_of_cbc,x=cumulative_fraction_of_reads, group=sample, color=Tx_run_number, linetype=condition))+
+  geom_line(data = sub_dt, size=0.5, color= "gray") +
+  geom_line(size=1.5) +
+  scale_y_log_eng()+
+  scale_x_continuous( expand = expand_scale(0,0)) +
+  coord_cartesian(xlim = c(0,1))
+
+(p1 | p2) + plot_layout (guides= "collect" )
+
+
+ggsave("results/number of reads over-side-by-side_this_run.pdf", width=8, height=6)
+```
+
+
+```{r}
+p1 <- ggplot(sub_dt, aes(y=n_reads_of_cbc,x=idx, group=sample, color=Tx_run_number, linetype=condition))+
+  geom_line(size=1.5) +
+  scale_y_log() +
+  scale_x_log() +
+  NULL
+
+p2 <- ggplot(sub_dt, aes(y=n_reads_of_cbc,x=cumulative_fraction_of_reads, group=sample, color=Tx_run_number, linetype=condition))+
+  geom_line(size=1.5) +
+  scale_y_log_eng()+
+  scale_x_continuous( expand = expand_scale(0,0)) +
+  coord_cartesian(xlim = c(0,1))
+
+(p1 | p2) + plot_layout (guides= "collect" )
+
+
+ggsave("results/number of reads over-side-by-side.pdf", width=8, height=6)
+```
+
+```{r}
+
+p1 <- ggplot(sub_dt, aes(y=n_reads_of_cbc,x=idx, group=sample, color=line, linetype=condition))+
+  geom_line(size=1.5) +
+  theme(legend.position = "none") +
+  scale_y_log_eng() +
+  scale_x_log_eng() +
+  xlab("index of cell barcode sorted by total #reads") +
+  ylab("#reads of cell barcode") +
+  NULL
+
+p2 <- ggplot(sub_dt, aes(y=cumulative_fraction_of_reads,x=idx, group=sample, color=line, linetype=condition))+
+  geom_line(size=1.5) +
+ # scale_y_log_eng() +
+  scale_x_log_eng() +
+  xlab("index of cell barcode sorted by total #reads") +
+  ylab("cumulative fraction of reads") +
+  NULL
+
+g1 <- ggplotGrob(p1)
+g1 <- gtable_add_cols(g1, unit(c(0,0),"mm")) # add a column for missing legend
+g2 <- ggplotGrob(p2)
+g <- rbind(g1, g2, size="first") # stack the two plots
+g$widths <- grid::unit.pmax(g1$widths, g2$widths) # use the largest widths
+# center the legend vertically
+g$layout[grepl("guide", g$layout$name),c("t","b")] <- c(1,nrow(g))
+grid::grid.newpage()
+pdf("results/kneeplots-side-by-side.pdf", width=6, height=8)
+grid::grid.draw(g)
+dev.off()
+grid::grid.draw(g)
+```
+
+```{r}
+ggplot(sub_dt, aes(y=cumulative_fraction_of_reads, x=idx, color=n_reads_of_cbc, group=sample))+
+  geom_line(size=5, lineend="round") +
+  geom_line(size=0.1, lineend="round",color="black") +
+  scale_x_log_eng(expand=expand_scale(0,-.08)) +
+  facet_wrap(vars(sample), nrow = 3) +
+  scale_color_viridis_c(trans=scales::log_trans(10),
+                        breaks=scales::log_breaks(TRUE, 10),
+                        minor_breaks=scales::log_breaks(FALSE, 10)) +
+  xlab("rank of cell barcode (by #reads)") +
+  ylab("cumulative fraction of reads") +
+  labs(color= "#reads of\ncell barcode") +
+  NULL
+ggsave("results/better_knee_facets.pdf", width=12, height=6)
+
+```
+
+```{r}
+i_max = 200000
+i_min = 70
+sub_dt <- dt[idx%in%round(exp(seq(log(i_min),log(i_max),length.out=100)))]
+
+sub_dt[,read_density:=c(NA,diff(cumulative_fraction_of_reads)), by= sample]
+
+ggplot(sub_dt, aes(x=idx,y=read_density)) +
+  geom_line(data=select(sub_dt,idx,read_density,sample),aes(group=sample),color="grey") +
+  geom_line(color="black") +
+  facet_grid(vars(line, replicate), vars(condition)) +
+  scale_x_log_eng(expand=expand_scale(0,0)) +
+  scale_y_continuous(expand = expand_scale(c(0,0.05),c(0,0)))
+  NULL
+ggsave("results/read_density_with_bg.pdf", width=8, height=4)
+
+
+```
+
+```{r}
+
+
+i_max = 30000
+i_min = 300
+sub_dt <- dt[idx%in%round(exp(seq(log(i_min),log(i_max),length.out=100)))]
+
+sub_dt[,read_density:=c(0,diff(cumulative_fraction_of_reads)), by= sample]
+
+
+ggplot(sub_dt, aes(x=idx,y=read_density)) +
+  geom_area(fill="skyblue2") +
+  facet_grid(vars(line, replicate), vars(condition)) +
+  scale_x_log_eng()+#expand=expand_scale(0,-.08)) +
+  NULL
+ggsave("results/read_density_zoom.pdf", width=12, height=6)
+
+
+ggplot(sub_dt, aes(y=cumulative_fraction_of_reads, x=idx, color=read_density))+
+  geom_line(size=5,lineend="round") +
+  geom_line(size=0.1,lineend="round",color="black") +
+  scale_x_log_eng(expand=expand_scale(0,-.08)) +
+  facet_grid(vars(line, replicate), vars(condition)) +
+  scale_color_viridis_c(trans=scales::log_trans(10),
+                        breaks=log_breaks(TRUE, 10),
+                        minor_breaks=log_breaks(FALSE, 10)) +
+  xlab("rank of cell barcode (by #reads)") +
+  ylab("cumulative fraction of reads") +
+  labs(color= "#reads density") +
+  NULL
+ggsave("results/better_knee2_facets.pdf", width=12, height=6)
+
+
+```
+
+
+```{r}
+i_max = 30000
+i_min = 3
+sub_dt <- dt[idx%in%round(exp(seq(log(i_min),log(i_max),length.out=100)))]
+
+ggplot(sub_dt, aes(x=idx,y=n_reads_of_cbc)) +
+  geom_line(data=select(sub_dt,idx,n_reads_of_cbc,sample), aes(group=sample), color="grey") +
+  geom_line(color="black") +
+  facet_grid(vars(line, replicate), vars(condition)) +
+  scale_x_log() +
+  scale_y_log() +
+  NULL
+ggsave("results/per_sample_knees_with_bg.pdf", width=8, height=4)
+
+
+```
+

@@ -1,0 +1,167 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  model_formula: !r ~ condition + Tx_run_number
+  only_untreated: !r FALSE
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := factor(Tx_run_number)][]
+meta_dt
+```
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := factor(Tx_run_number)][]
+```
+
+
+# Differential expression between conditions/treatments treating samples as replicates
+This allows to make statements about differences between conditions/treatments instead of only samples.
+DESeq2 is used for testing, which uses biased estimates of the variance of individuals genes' expression. It ignores knowledge about the variance from the single cell level.
+Additional, shrinkage based estimation of effect sizes (log2 fold changes) is biased, but more accurate.
+In the volcano plots, the 20 most significant genes are labeled, genes significant at an false discovery rate (FDR) of 10% are highlighted by color.
+Only the genes with the smallest 1000 p-values are shown. Results for all genes are saved in a .tsv file.
+
+```{r}
+de_results_dt <- agg_dt[, total_count_of_gene_in_cell_type := sum(count), by = .(gene, cell_type)][total_count_of_gene_in_cell_type>0][#cell_type=="pseudo bulk"
+  ,{
+  sample_id_fct <- factor(sample_id)
+  gene_fct <- factor(gene)
+  countData <- sparseMatrix(as.integer(gene_fct), as.integer(sample_id_fct), x = count, dimnames=list(levels(gene_fct), levels(sample_id_fct)))
+  
+  colData <-  meta_dt[levels(sample_id_fct),]
+
+  dds <- DESeq2::DESeqDataSetFromMatrix(
+    countData, 
+    colData,
+    design= model_formula
+  )
+  dds <- DESeq2::DESeq(dds)
+  
+  contrasts <- DESeq2::resultsNames(dds)[-1]
+  contrasts <- contrasts[contrasts %in% c("condition_young_vs_aged")] # batch effects not of interest
+  rbindlist(lapply(contrasts, function(contrast) setDT(biobroom::tidy.DESeqResults(DESeq2::results(dds, name=contrast)))[, contrast := contrast]))
+}, by=cell_type]
+```
+
+
+```{r save results table}
+de_results_dt[is.na(p.value), p.value := 1] # See https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#pvaluesNA
+de_results_dt[is.na(p.adjusted), p.adjusted := 1] # See https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#pvaluesNA
+fwrite(de_results_dt, fs::path(results_dir, paste0("DE_samples_as_replicates.tsv")), sep="\t")
+```
+
+```{r}
+de_results_dt %>% ggplot(aes(x=log10(baseMean), y=-log10(p.value), color=cell_type)) + 
+  geom_point() + 
+  geom_smooth(method="gam",  formula=y ~ s(x, bs = "cs"), color="black") + 
+  facet_wrap("cell_type") +
+  sir::scale_color_cell_type() +
+  scale_y_sqrt() +
+  NULL
+```
+
+
+```{r}
+de_results_dt[, {
+  cat(paste0(contrast, ": ", cell_type), "\n")
+  print(.SD[p.adjusted<0.2])
+  
+  p <- .SD%>%
+    ggplot(aes(y=-log10(p.value), x=estimate, color=p.adjusted<0.1)) + 
+    geom_point() +
+    ggrepel::geom_text_repel(aes(label=gene), data=.SD[order(p.adjusted)[1:20]], color="black") +
+    ggtitle(paste0(contrast, ": ", cell_type)) +
+    NULL
+  print(p)
+  NULL
+}, by=.(cell_type, contrast)]
+```
+
+
+## effect size visualization of the strongest treatment effect
+Shows the expression of Gip for each sample over treatment and age. 
+Samples coming from the same line are connected by a line.
+Gip expression is induced upon Wnt treatment, and, in this case, more strongly in young mice.
+1+cpm = Gip counts per million counts of sample plus one pseudocount
+
+```{r example genes, fig.width=17.6, fig.height = 3}
+
+alpha=0.83
+gene_ = "Ly6e"
+n_to_plot <- 3
+
+interesting_genes <- de_results_dt[p.adjusted<0.1, gene[c(order(-abs(estimate))[seq_len(n_to_plot)], order(p.adjusted)[seq_len(n_to_plot)])], by=contrast][,V1] # c("Ly6e", agg_dt[,sample(unique(gene),3)]) #
+samples_x_cell_types_dt <- unique(agg_dt, by=c("sample_id","cell_type"))[,c("cell_type", "total_count_in_sample_x_cell_type", colnames(meta_dt)), with=FALSE]
+
+for (gene_ in interesting_genes) {
+  
+  samples_x_cell_types_dt <- unique(agg_dt, by=c("sample_id","cell_type"))[,c("cell_type", "total_count_in_sample_x_cell_type", colnames(meta_dt)), with=FALSE]
+  
+  
+  sub_dt <- agg_dt[gene==gene_] 
+  sub_dt <- sub_dt[samples_x_cell_types_dt,on=intersect(colnames(sub_dt),colnames(samples_x_cell_types_dt))]
+  sub_dt[is.na(count), count:=0]
+  sub_dt
+  
+  sub_dt %<>% ebbr::add_ebb_estimate(count, total_count_in_sample_x_cell_type, cred_level = alpha)
+  sub_dt[, `:=`(CPM_estimate_eb = .fitted*1E6,
+                CPM_lower_eb = .low*1E6,
+                CPM_upper_eb = .high*1E6
+  )]
+  these_limits <- sub_dt[gene==gene_, c(min(CPM_estimate_eb)/2, max(CPM_estimate_eb)*2)]
+  
+  dodge_width <- 0.8
+  
+  expression_plot <- ggplot(sub_dt, aes(x=cell_type, y=CPM_estimate_eb, color=condition, group = Tx_run_number)) + 
+    facet_grid(. ~ gene, scales="free", labeller = label_wrap_gen(width=20)) +
+    #geom_pointrange(aes(group = interaction(treatment, condition, Tx_run_number, mouse), ymin=CPM_lower_eb, ymax=CPM_upper_eb), linetype="solid", position=position_dodge2(dodge_width)) +
+    geom_line(aes(group = interaction(Tx_run_number, mouse))#, position=position_dodge2(dodge_width)
+              ) +
+    geom_point() +
+    #stat_summary(aes(group=interaction(cell_type, condition, treatment)), 
+    #             fun.data = function(x) exp( mean_cl_normal(log1p(x), conf.int=alpha))-1, 
+    #             geom = "crossbar") +
+    schelpr::scale_y_log1p() +
+    sir::scale_x_cell_type() +
+    sir::scale_color_age() +
+    coord_cartesian(ylim=these_limits) +
+    ggtitle(paste0(gene_, "")) + 
+    theme(axis.title.x=element_blank()) +
+    NULL
+  
+  expression_plot %>% print
+}
+```
+
+
+
+
+
+
+

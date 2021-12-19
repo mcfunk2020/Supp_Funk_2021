@@ -1,0 +1,4 @@
+html_document:
+  df_print: paged
+#  self_contained: false
+#  lib_dir: libs

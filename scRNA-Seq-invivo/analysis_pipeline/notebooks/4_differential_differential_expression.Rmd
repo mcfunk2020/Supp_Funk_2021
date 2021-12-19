@@ -1,0 +1,103 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(DESeq2)
+
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+meta_dt <- fread("Sample meta - Sheet1.tsv")
+setkey(meta_dt, key="sample_id")
+meta_dt[, Tx_run_number := factor(Tx_run_number)][]
+meta_dt
+```
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := factor(Tx_run_number)]
+agg_dt[, cell_type := factor(cell_type, levels = unique(c("pseudo bulk", cell_type)))]
+```
+
+```{r}
+countData <- agg_dt[, long2sparse(gene, cols = interaction(sample_id, cell_type), values = count, dimname_cols = NULL, dimname_rows = NULL)]
+colData <- unique(agg_dt[, .(sample_id_x_cell_type = interaction(sample_id, cell_type), sample_id, cell_type)])[colnames(countData), on = .(sample_id_x_cell_type)]
+colData <- meta_dt[colData, on =.(sample_id)]
+colData
+```
+
+
+```{r}
+library("IHW")
+library("DESeq2")
+size_factors <- Matrix::colSums(countData)
+gene_mean <- Matrix::rowMeans(countData)
+countData <- countData[rank(-gene_mean) <= 5000, ]
+
+f1 <- if(colData[, length(unique(Tx_run_number))]>2)  ~ condition + condition:cell_type + cell_type + Tx_run_number else  ~ condition + condition:cell_type + cell_type
+dds <- DESeq2::DESeqDataSetFromMatrix(countData, data.frame(colData, row.names = colData[, sample_id_x_cell_type]), design = f1)
+
+DESeq2::sizeFactors(dds) <- size_factors
+dds <- DESeq2::estimateDispersions(dds, fitType = "local")
+dds <- DESeq2::nbinomWaldTest(dds, useT=TRUE)
+
+
+de_overall_dt <- DESeq2::results(dds, name = "condition_young_vs_aged", cooksCutoff = FALSE,  filterFun=ihw)
+de_overall_dt <- as.data.table(de_overall_dt, keep.rownames = "affected_gene")[, coef := "condition_young_vs_aged"]
+de_overall_dt[, qadj := schelpr::adjust_q_vals(q_vals = padj, sets = coef)]
+setorder(de_overall_dt, qadj, padj, pvalue)
+de_overall_dt
+```
+
+
+```{r}
+de_dt <-
+  rbindlist(lapply(DESeq2::resultsNames(dds) %>% str_subset("^conditionyoung\\."), function(coef) {
+    res <- DESeq2::results(dds, name = coef, cooksCutoff = FALSE,  filterFun=ihw) #de_overall_dt[,pvalue]
+    as.data.table(res, keep.rownames = "affected_gene"
+    )[, coef := coef]
+  }))
+de_dt[, cell_type := stringr::str_match(coef, "^conditionyoung\\.(.*)$")[,2]]
+de_dt[, qadj := schelpr::adjust_q_vals(q_vals = padj, sets = coef)]
+
+de_dt[de_overall_dt, overall_pvalue := i.pvalue,  on = .(affected_gene)]
+
+de_dt[, padj2 := IHW::adj_pvalues(ihw(pvalues = pvalue, covariates = log(overall_pvalue), alpha = 0.1)), by = .(cell_type)]
+de_dt[, qadj2 := schelpr::adjust_q_vals(q_vals = padj2, sets = coef)]
+setorder(de_dt, qadj, padj, pvalue)
+de_dt
+setorder(de_dt, qadj2, padj2, pvalue)
+de_dt
+```
+
+```{r save results table}
+fwrite(de_dt, fs::path(results_dir, paste0("DDE_samples_as_replicates.tsv")), sep="\t")
+```
+
+```{r}
+de_dt[, rank:=rank(qadj), by=.(cell_type, coef)][qadj < 0.1][rank<5]
+```
+
+
+

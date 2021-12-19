@@ -1,0 +1,276 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  differential_expression_dir: "results_ci_human/analysis_in_vivo/4_differential_expression"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+library(patchwork)
+library(colorspace)
+
+library(ggupset)
+```
+
+
+# DEGs
+
+```{r}
+de_single_cell_dt <- fread(fs::path(differential_expression_dir, "DE_samples_as_replicates.tsv"), sep="\t")
+de_single_cell_dt <- de_single_cell_dt[contrast == "condition_young_vs_aged"]
+de_single_cell_dt[, gene_name := gene]
+setnames(de_single_cell_dt, 
+         old =  c("estimate", "stderror", "statistic", "p.value", "p.adjusted"),
+         new = c("log2FoldChange", "lfcSE", "stat", "pvalue", "padj")
+)
+
+cell_types <- de_single_cell_dt[, sort(unique(cell_type))]
+cell_types <- c(cell_types[cell_types %in% "pseudo bulk"], cell_types[!(cell_types %in% "pseudo bulk")])
+
+de_single_cell_dt[is.na(padj), padj := 1]
+```
+
+
+```{r visualize number of degs}
+de_single_cell_dt %>% ggplot(aes(x = cell_type, y = -log2FoldChange)) +
+  ggrastr::rasterize(geom_jitter(color = "gray"), dpi = 600) +
+  #geom_jitter(aes(color = cell_type), data = de_single_cell_dt[padj<0.1]) +
+  ggforce::geom_sina(aes(color = cell_type), data = de_single_cell_dt[padj<0.1], scale="width") +
+  #ggforce::geom_sina()
+  labs(y = "log2fc aged/young") +
+  guides(color = "none") +
+  scale_x_cell_type() +
+  scale_color_cell_type() +
+  theme(axis.title.x = element_blank()) +
+  NULL
+```
+
+
+```{r volcano, fig.height=3.5}
+n_highlight <- 20
+cell_types <- de_single_cell_dt[, unique(cell_type)]
+for (this_cell_type in cell_types) {
+  tryCatch({
+  p1 <- volcano_plot(de_single_cell_dt[cell_type==this_cell_type,],
+    highlight = rank(- (abs(log2FoldChange)-(lfcSE*qnorm(1-0.1*n_highlight/length(lfcSE)))))<=n_highlight, 
+    label_size = 2.5, 
+    force_pull = 5, 
+    point.padding = 0.2,
+    force = 70,
+    #nudge_y = 10,
+    color = "black",     # text color
+    bg.color = "white", # shadow color
+    bg.r = 0.2          # shadow radius
+  ) +
+    facet_wrap("cell_type") +
+    NULL
+  print(p1)},
+  error = function(e) warning(e)
+  )
+}
+```
+
+```{r, fig.width =6}
+library(ggupset)
+ggplot2::theme_update(aspect.ratio =NULL)
+sets_dt <- de_single_cell_dt[padj<=0.1][, .(cell_type = list(paste(direction, "in", cell_type))), by= .(gene,direction=ifelse(sign(log2FoldChange)>0, "up", "down"))]
+sets_dt[, cell_types := paste(sort(cell_type[[1]]), collapse="&"), by = gene]
+
+sub_sets_dt <- sets_dt[cell_types %in% sets_dt[, .N, by= cell_types][order(-N)][1:20, cell_types]]
+
+p1 <- sub_sets_dt %>%  ggplot(aes(x=cell_types)) +
+    geom_bar() +
+    #theme(aspect.ratio = 0.3) +
+    axis_combmatrix(sep = "&") +
+    #scale_x_upset(n_intersections = 20, ) +
+    NULL
+p1
+p1 <- sets_dt %>%  ggplot(aes(x=cell_type)) +
+    geom_bar() +
+    scale_x_upset(n_intersections = 20, ) +
+    NULL
+p1
+ggsave("results/upset.png",plot = p1, dpi = 600, width=6, height= 3.5)
+```
+
+
+```{r, fig.width =6}
+sets_dt[direction=="up"][sets_dt[direction=="down"], on = .(gene), nomatch= NULL]
+sign_dt <- de_single_cell_dt[padj<=0.1, .(gene, cell_type, direction = ifelse(sign(log2FoldChange)>0, "up", "down"))]
+sign_dt[sign_dt[cell_type =="pseudo bulk"], in_pseudo_bulk := ifelse(direction==i.direction, "same", "other"),on=.(gene)]
+sign_dt[is.na(in_pseudo_bulk), in_pseudo_bulk := "not significant"]
+n_sign_dt <- sign_dt[, .N, by= .(cell_type, in_pseudo_bulk)]
+n_sign_dt %>% ggplot(aes(x=cell_type, y= N, fill = in_pseudo_bulk)) + geom_col() + scale_x_cell_type()
+ggsave("results/alt_upset.png",plot = p1, dpi = 600, width=6, height= 3.5)
+```
+
+```{r}
+#eulerr::euler(sets_dt[, .N, by= cell_types])
+```
+
+
+```{r}
+de_comp_dt <- merge(de_single_cell_dt[cell_type!="pseudo bulk"],de_single_cell_dt[cell_type=="pseudo bulk"], by = "gene", suffixes = c("_cell_type_specific", "_pseudo_bulk"))
+```
+
+
+```{r}
+max_se <- 0.5
+alpha = 0.1
+dt <- de_comp_dt[ padj_pseudo_bulk < 0.2 | padj_cell_type_specific<0.2 ]
+dt[, pdiff := pnorm(abs(log2FoldChange_cell_type_specific-log2FoldChange_pseudo_bulk)/sqrt(lfcSE_pseudo_bulk^2+lfcSE_cell_type_specific^2), lower.tail = FALSE)]
+setorder(dt, pdiff)
+dt[, padj := p.adjust(pdiff, "BH")]
+dt[padj<0.5]
+
+x_range <-  dt[, range(log2FoldChange_pseudo_bulk)]
+y_range <- dt[, range(log2FoldChange_cell_type_specific)]
+max_se_adj <- qnorm(alpha/nrow(de_comp_dt), sd = max_se, lower.tail = FALSE)
+dt %>% ggplot(aes(x = log2FoldChange_pseudo_bulk, y = log2FoldChange_cell_type_specific)) + 
+  geom_ribbon(data= data.frame(x=x_range, ymin=x_range-max_se_adj, ymax=x_range+max_se_adj), aes(x=x, ymin =ymin, ymax=ymax, y = 1), alpha=0.3, fill="gray") + 
+  geom_abline() + 
+  ggpointdensity::geom_pointdensity() + 
+  geom_point(data= dt[padj<0.1], color="red") + 
+  ggrepel::geom_text_repel(data= dt[padj<0.1], aes(label=gene),
+                           
+    color = "white",     # text color
+    bg.color = "grey30", # shadow color
+    bg.r = 0.15          # shadow radius
+    ) +
+  facet_wrap("cell_type_cell_type_specific") +
+  coord_cartesian(xlim = x_range, ylim = y_range, expand = 0.1) +
+  theme(aspect.ratio = NULL) +
+  NULL
+```
+
+```{r}
+max_se <- 0.5
+alpha = 0.1
+dt <- de_comp_dt[ padj_pseudo_bulk < 0.2 | padj_cell_type_specific<0.2 ][cell_type_cell_type_specific=="Enterocyte Progenitor"]
+dt[, pdiff := pnorm(abs(log2FoldChange_cell_type_specific-log2FoldChange_pseudo_bulk)/sqrt(lfcSE_pseudo_bulk^2+lfcSE_cell_type_specific^2), lower.tail = FALSE)]
+setorder(dt, pdiff)
+dt[, padj := p.adjust(pdiff, "BH")]
+dt[padj<0.5]
+
+x_range <-  dt[, range(log2FoldChange_pseudo_bulk)]
+y_range <- dt[, range(log2FoldChange_cell_type_specific)]
+max_se_adj <- qnorm(alpha/nrow(de_comp_dt), sd = max_se, lower.tail = FALSE)
+dt %>% ggplot(aes(x = log2FoldChange_pseudo_bulk, y = log2FoldChange_cell_type_specific)) + 
+  geom_ribbon(data= data.frame(x=x_range, ymin=x_range-max_se_adj, ymax=x_range+max_se_adj), aes(x=x, ymin =ymin, ymax=ymax, y = 1), alpha=0.3, fill="gray") + 
+  geom_abline() + 
+  ggpointdensity::geom_pointdensity() + 
+  geom_point(data= dt[gene=="Itgam"], color="red") + 
+  ggrepel::geom_text_repel(data= dt[gene=="Itgam"], aes(label=gene),
+                           
+    color = "white",     # text color
+    bg.color = "grey30", # shadow color
+    bg.r = 0.15          # shadow radius
+    ) +
+  facet_wrap("cell_type_cell_type_specific") +
+  coord_cartesian(xlim = x_range, ylim = y_range, expand = 0.1) +
+  theme(aspect.ratio = 1) +
+  NULL
+ggsave("results/now.png", width=4, height = 3.5)
+```
+```{r}
+library(nVennR)
+library(grImport2)
+library(rsvg)
+#myV <- createVennObj(nSets = 4, sNames = c('A', 'B', 'C', 'D'), sSizes = c(0, 26, 53, 7, 22, 5, 16, 3, 54, 10, 29, 4, 20, 5, 14, 3))
+de_gene_sets <- with(de_single_cell_dt[cell_type!="pseudo bulk"][padj<0.1][cell_type %in% c("TA", "Stem", "Enterocyte Progenitor",
+"Enterocyte", "EEC")], split(gene, cell_type))
+myV <- nVennR::plotVenn(de_gene_sets, outFile=fs::path(results_dir, "nvennr.svg"))
+#myV <- nVennR::plotVenn(nVennObj = myV, outFile="b.svg")
+
+a <- showSVG(myV)
+a <- showSVG(myV, systemShow = TRUE)
+```
+
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := factor(Tx_run_number)][]
+```
+```{r, fig.width=12}
+dde_dt <- de_single_cell_dt[cell_type!="pseudo bulk"][padj<0.1][, n_celltypes_de := .N ,by = .(gene)][]
+setorder(dde_dt, n_celltypes_de, padj, pvalue)
+dde_dt <- dde_dt[, .SD[seq_len(min(3,.N))], by = cell_type]
+
+this_dodge <- position_dodge(width=0.2)
+agg_dt[dde_dt, on = "gene"][, {
+  p1 <- .SD %>% ggplot(aes(x = cell_type, y = CPM, ymin = CPM_lower, ymax = CPM_upper, color = condition, group = interaction(cell_type, Tx_run_number))) +
+    geom_point(aes(shape = Tx_run_number), size = 2, position = this_dodge) +
+    geom_errorbar(width = 0.3, position = this_dodge) +
+    geom_line(aes(group = sample_id, linetype = Tx_run_number), position = this_dodge) +
+    scale_x_cell_type() +
+    facet_wrap("gene", scales = "free_y", nrow = 1) +
+    scale_y_log1p() +
+    scale_color_age() +
+    theme(aspect.ratio = 2/3) +
+    ggtitle(paste0("only in ", i.cell_type)) +
+    NULL
+  print(p1)
+  NULL},
+  by= .(i.cell_type)]
+```
+
+
+```{r mhcII pval}
+dde_features_dt <- agg_dt[dt[padj<0.1][seq_len(.N)<=6], on = .(gene)]
+dde_features_dt
+```
+
+```{r, fig.height = 7, fig.width = 12, error = TRUE}
+this_dodge <- position_dodge(width=0.2)
+dde_features_dt %>% ggplot(aes(x = cell_type, y = CPM, ymin = CPM_lower, ymax = CPM_upper, color = condition, group = interaction(cell_type, Tx_run_number))) +
+  geom_point(aes(shape = Tx_run_number), size = 2, position = this_dodge) +
+  geom_errorbar(width = 0.3, position = this_dodge) +
+  geom_line(aes(group = sample_id, linetype = Tx_run_number), position = this_dodge) +
+  scale_x_cell_type() +
+  facet_wrap("gene", scales = "free_y", nrow = 2) +
+  scale_y_log1p() +
+  scale_color_age() +
+  theme(aspect.ratio = 2/3) +
+  NULL
+ggsave(filename = "results/dde_features_dt.png", dpi = 600, height = FIG_HEIGHT, width = FIG_HEIGHT*3)
+```
+
+```{r, fig.height = 7, fig.width = 12, error =TRUE}
+this_dodge <- position_dodge(width=0.2)
+rs <- function(x)  x #log1p(100*(exp(x)-1))
+dde_features_dt %>% ggplot(aes(x = cell_type, y = rs(expression_mean), ymin = rs(expression_mean-expression_sem), ymax = rs(expression_mean+expression_sem), color = condition, group = interaction(cell_type, Tx_run_number))) +
+  geom_point(aes(shape = Tx_run_number), size = 2, position = this_dodge) +
+  geom_errorbar(width = 0.3, position = this_dodge) +
+  geom_line(aes(group = sample_id, linetype = Tx_run_number), position = this_dodge) +
+  scale_x_cell_type() +
+  facet_wrap("gene", scales = "free_y", nrow = 2) +
+  scale_color_age() +
+  theme(aspect.ratio = 2/3) +
+  NULL
+ggsave(filename = "results/dde_features_expressiont.png", dpi = 600, height = FIG_HEIGHT, width = FIG_HEIGHT*3)
+```
+
+
+```{r}
+agg_dt[gene %in% "Gda"] %>% ggplot(aes(x=CPM, xmin=CPM_lower , xmax=CPM_upper  , y= expression_mean, ymin=expression_mean-expression_sem, ymax=expression_mean+expression_sem, alpha=count, color=cell_type)) +
+  geom_point(aes(fill=n_cells)) +
+  scale_x_log1p() +
+  geom_errorbar() +
+  geom_errorbarh() +
+  scale_color_cell_type() +
+  scale_alpha_continuous(trans="log1p") +
+  NULL
+```

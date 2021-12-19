@@ -1,0 +1,125 @@
+---
+title: Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche
+  - analysis
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  aggregated_data_dir: "results_ci_human/analysis_in_vivo/3_aggregation"
+  dde_dir: "results_ci_human/analysis_in_vivo/5_differential_differential_expression"
+  results_dir: "results"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(sir)
+library(schelpr)
+
+library(data.table)
+library(tidyverse)
+```
+
+```{r load aggregated data}
+agg_dt <- fread(file = fs::path(aggregated_data_dir, "aggregated_expression.tsv"), sep = "\t")
+agg_dt[, Tx_run_number := factor(Tx_run_number)]
+agg_dt[, cell_type := factor(cell_type, levels = unique(c("pseudo bulk", cell_type)))]
+```
+
+```{r save results table}
+de_dt <- fread(fs::path(dde_dir, paste0("DDE_samples_as_replicates.tsv")), sep="\t")
+```
+
+```{r}
+de_dt[, rank:=rank(qadj), by=.(cell_type, coef)][qadj < 0.1][rank<5]
+```
+
+
+
+```{r}
+de_dt[, {
+  cat(paste0(coef, ": ", cell_type), "\n")
+  print(.SD[qadj<0.1])
+  
+  p <- .SD%>%
+    ggplot(aes(y=-log10(pvalue), x=log2FoldChange, color=qadj)) + 
+    scale_color_viridis_c(trans="sqrt", limits = 0:1) +
+    geom_point() +
+    ggrepel::geom_text_repel(aes(label=affected_gene), data=.SD[order(qadj, padj, pvalue)[1:20]], color="black") +
+    ggtitle(paste0(coef)) +
+    NULL
+  print(p)
+  NULL
+}, by=.(cell_type, coef)]
+```
+
+
+
+## effect size visualization of the strongest treatment effect
+Shows the expression of Gip for each sample over treatment and age. 
+Samples coming from the same line are connected by a line.
+Gip expression is induced upon Wnt treatment, and, in this case, more strongly in young mice.
+1+cpm = Gip counts per million counts of sample plus one pseudocount
+
+```{r example genes, fig.width=17.6}
+
+alpha <- 0.83
+interesting_genes <- de_dt[, .SD[order(qadj, padj, pvalue)[1],], by = .(coef)][, affected_gene] 
+samples_x_cell_types_dt <- agg_dt[, .N, by=.(sample_id, sample_name, line, treatment, condition, mouse, Tx_run_number, sample_type, n_cells_sample, cell_type, total_count_in_sample_x_cell_type)]
+
+for (gene_ in interesting_genes) {
+  # gene_ <-  "Defa17"
+  
+  sub_dt <- agg_dt[gene==gene_] 
+  sub_dt <- sub_dt[samples_x_cell_types_dt, on = intersect(colnames(sub_dt), colnames(samples_x_cell_types_dt))]
+  sub_dt[is.na(count), count:=0]
+  sub_dt
+  
+  sub_dt %<>% ebbr::add_ebb_estimate(count, total_count_in_sample_x_cell_type, cred_level = alpha) %>% data.table
+  sub_dt[, `:=`(CPM_estimate_eb = .fitted*1E6,
+                CPM_lower_eb = .low*1E6,
+                CPM_upper_eb = .high*1E6
+  )]
+  these_limits <- sub_dt[gene==gene_, c(min(CPM_estimate_eb)/2, max(CPM_estimate_eb)*2)]
+  
+  dodge_width <- 0.8
+  
+  expression_plot <- ggplot(sub_dt, aes(x=condition, y=CPM_estimate_eb, color=Tx_run_number)) + 
+    facet_grid(. ~ cell_type, scales="free", labeller = label_wrap_gen(width=20)) +
+    geom_pointrange(aes(group = interaction(condition, Tx_run_number, mouse), ymin=CPM_lower_eb, ymax=CPM_upper_eb), linetype="solid", position=position_dodge2(dodge_width)) +
+    geom_line(aes(group = interaction(Tx_run_number, mouse)), position=position_dodge2(dodge_width)) +
+    stat_summary(aes(group=interaction(cell_type, condition)), 
+                 fun.data = function(x) exp( mean_cl_normal(log1p(x), conf.int=alpha))-1, 
+                 geom = "crossbar") +
+    schelpr::scale_y_log1p() +
+    coord_cartesian(ylim=these_limits) +
+    ggtitle(paste0(gene_, "")) + 
+    theme(axis.title.x=element_blank()) +
+    scale_x_age() +
+    NULL
+  
+  expression_plot %>% print
+  
+  
+  
+  expression_plot <- ggplot(sub_dt, aes(x=condition, y=CPM_estimate_eb, color=mouse)) + 
+    facet_grid(. ~ cell_type, scales="free", labeller = label_wrap_gen(width=20)) +
+    geom_pointrange(aes(group = interaction(condition, Tx_run_number, mouse), ymin=CPM_lower_eb, ymax=CPM_upper_eb), linetype="solid", position=position_dodge2(dodge_width)) +
+    geom_line(aes(group = interaction(Tx_run_number, mouse)), position=position_dodge2(dodge_width)) +
+    stat_summary(aes(group=interaction(cell_type, condition)), 
+                 fun.data = function(x) exp( mean_cl_normal(log1p(x), conf.int=alpha))-1, 
+                 geom = "crossbar") +
+    schelpr::scale_y_log1p() +
+    coord_cartesian(ylim=these_limits) +
+    ggtitle(paste0(gene_, "")) + 
+    theme(axis.title.x=element_blank()) +
+    scale_x_age() +
+    NULL
+  
+  expression_plot %>% print
+}
+```
+
+

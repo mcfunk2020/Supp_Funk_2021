@@ -1,0 +1,160 @@
+---
+title: "Ageing & Wnt in an organoid model of the mouse small instenial stem cell niche - integration"
+author: "Jan Gleixner, Maja Funk"
+date: "`r Sys.Date()`"
+params:
+  results_dir: "results/haber"
+  data_dir: "raw_data"
+---
+
+```{r do setup, code=readLines(fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")), echo=FALSE, eval=TRUE}
+source(file = fs::path(rprojroot::find_rstudio_root_file(), "notebooks", "setup_chunk.R")) # for RStudio
+```
+
+``` {r, warn=FALSE, message=FALSE, echo=FALSE}
+library(Matrix.utils)
+library(Seurat)
+library(dplyr)
+
+library(sir)
+
+library(data.table)
+library(tidyverse)
+
+```
+
+```{r load  gene list}
+cell_types_dt <- fread("SI_cell_type_markers.tsv")[marker_gene_symbol!=""]
+cell_types_list <- lapply(split(cell_types_dt, by="cell_type"), `[`, , marker_gene_symbol)
+
+features_dt <- fread("SI_feature_gene_lists.tsv")[marker_gene_symbol!=""]
+features_list <- lapply(split(features_dt, by="feature"), `[`, , marker_gene_symbol)
+```
+
+```{r load and parse cell info from Haber}
+cell_meta_file <- gzfile(fs::path(data_dir, "Haber_et_al_2017", "GSE92332_atlas_UMIcounts.txt.gz"))
+haber_cell_meta <- data.table(cell_info = str_split(readLines(cell_meta_file, 1), "\t")[[1]])
+close(cell_meta_file)
+haber_cell_meta[, c("well", "CBC", "cell_type_haber") := tstrsplit(cell_info, "_")]
+haber_cell_meta[, cell_type_haber := str_replace(cell_type_haber, pattern = "\\.", replacement = " ")]
+haber_cell_meta[, .N, by = .(well, cell_type_haber)]
+haber_cell_meta
+```
+
+
+```{r}
+so_dirs <- c("GSM2839445_Atlas1", "GSM2839446_Atlas2", "GSM2839447_Atlas5", "GSM2839448_Atlas6","GSM2839449_Atlas9", "GSM2839450_Atlas10")
+so_dir_paths <- fs::path(data_dir, "Haber_et_al_2017", so_dirs)
+names(so_dir_paths) <- so_dirs
+
+so <-  CreateSeuratObject(Read10X(so_dir_paths, strip.suffix = TRUE))
+
+so[['cell']] <- rownames(so@meta.data)
+so[['CBC']] <- tstrsplit(rownames(so@meta.data), "_")[[3]]
+
+map_dt <- haber_cell_meta[so@meta.data, on = .(CBC)][,.N, by= .(orig.ident, well)][, .(well = well[which.max(N)]), by=orig.ident]
+haber_cell_meta <- map_dt[haber_cell_meta, on = .(well)]
+
+so@meta.data <- data.frame(haber_cell_meta[so@meta.data, on =.(orig.ident, CBC)], row.names = "cell")
+
+so[['Tx_run_number']] <- "Haber et al. (2017)"
+so[['sample_name']] <- so[['orig.ident']]
+so[['sample_id']] <- so[['orig.ident']]
+so[['condition']] <- "Haber et al. (2017)"
+so[['treatment']] <- "untreated"
+so
+```
+
+```{r}
+mito.features <- grep(pattern = "^Rp", x = rownames(so), value = TRUE) # mitochondrial genes a censored for some reason, using Rp as surrogate
+so[['fraction_mito']] <- Matrix::colSums(x = GetAssayData(so, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(so, slot = 'counts'))
+```
+
+```{r}
+mm <- meta_and_reductions(so)
+#mm <- thresholds_dt[mm, on = .(sample_id)]
+
+mm %>% ggplot(aes(x=nCount_RNA, y=nFeature_RNA , color=sample_id)) + geom_cell()
+mm %>% ggplot(aes(x=nCount_RNA, y=fraction_mito, color=sample_id)) + geom_cell() + scale_x_log()
+
+qc_plot_pre_facetting  <-  mm %>% ggplot(aes(x=nCount_RNA, y=fraction_mito, color=sample_id)) + 
+  geom_cell(data = mm %>% select(-sample_id, -Tx_run_number), color="gray", size=0.1) + 
+  geom_point(size=0.1) + 
+  scale_x_log_eng() + 
+#  geom_vline(aes(xintercept = min_nCount_RNA),  linetype="dotted") + 
+ # geom_hline(aes(yintercept = max_frac_mito), linetype="dashed") +
+  NULL
+
+qc_plot_pre_facetting + facet_wrap(vars(sample_id))
+```
+
+```{r}
+so %<>% subset(sample_id != "GSM2839445") # has strange n_umi / n_genes
+so %<>% subset(sample_id != "GSM2839448") # has few cells
+```
+
+```{r}
+so %<>% NormalizeData()
+tmp <- so %>% subset(sample_id == "GSM2839446") %>% FindVariableFeatures()
+tmp %>% VariableFeaturePlot()
+VariableFeatures(so) <- VariableFeatures(tmp)
+so %<>% ScaleData(vars.to.regress = "sample_id")
+so %<>% RunPCA(ndims.print = 1, npcs = 20)
+so %<>% RunTSNE(dims = 1:10)
+```
+
+```{r}
+sos <- SplitObject(so, split.by = "sample_name")
+```
+
+# perform integration
+
+```{r perform integration}
+anchors <- FindIntegrationAnchors(object.list = sos, reference = which(names(sos)=="GSM2839446"))
+so <- IntegrateData(anchorset = anchors)
+```
+
+```{r scale and run pca and umap}
+so %<>% ScaleData()
+so %<>% ScaleData(assay = "RNA")
+so %<>% RunPCA(ndims.print = 1, npcs = 20)
+so %<>% RunTSNE(dims = 1:10)
+```
+
+
+
+```{r compute modules scores}
+so@meta.data[, c("ccs","ccg2m")] <- pca_scores(GetAssayData(so, slot = "scale.data", assay = "RNA"),  sir::cc.genes_mmusculus)
+so@meta.data[, names(cell_types_list)] <- pca_scores(GetAssayData(so, slot = "scale.data", assay = "RNA"), cell_types_list)
+so@meta.data[, names(features_list)] <- pca_scores(GetAssayData(so, slot = "scale.data", assay = "RNA"), features_list)
+```
+
+```{r}
+mm <- so %>% schelpr::meta_and_reductions()
+mm_wo_facet <- copy(mm)[, c("sample_name", "Tx_run_number", "condition", "treatment") := NULL]
+mm
+```
+
+```{r}
+for (cell_type in c("ccs", "ccg2m", "sample_id", "cell_type_haber")) {
+  p1 <- mm %>% ggplot(aes_string(x="tSNE_1", y="tSNE_2", color=cell_type)) + 
+    geom_cell() + 
+    guides(color = guide_legend(override.aes = aes(size=2)))+
+    NULL
+  p1 %>% print()
+}
+```
+
+```{r}
+for (cell_type in paste0("`", names(cell_types_list), "`")) {
+  p1 <- mm %>% ggplot(aes_string(x="tSNE_1", y="tSNE_2", color=cell_type)) + 
+      geom_cell() + 
+    NULL
+  p1 %>% print()
+}
+```
+
+
+```{r save integerated seurat object for use in downstream analysis}
+write_rds(so, fs::path(results_dir,"seurat_object.rds"))
+```
