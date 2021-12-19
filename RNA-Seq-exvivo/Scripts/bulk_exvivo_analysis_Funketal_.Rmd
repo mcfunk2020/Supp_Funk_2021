@@ -154,7 +154,8 @@ require(patchwork)
 vsd_batchrm <- vsd
 assay(vsd_batchrm) <- limma::removeBatchEffect(assay(vsd_batchrm), vsd_batchrm$batch)
 
-b <- plotPCA(vsd, "Age") + ggtitle("PCA by Age") + scale_color_manual(values=c(maja_agedD,maja_young)) + theme_cowplot()
+
+b <- plotPCA(vsd_batchrm, "Age") + ggtitle("PCA by Age") + scale_color_manual(values=c(maja_agedD,maja_young)) + theme_cowplot()
 
 ggsave("../Graphics/PCA_bulk_exvivo.pdf",b, width = 10,height = 10,units ="cm")
 
@@ -405,7 +406,10 @@ fgsea_hallmarktdy <- fgsea_hallmark %>%
   as_tibble() %>%
   arrange(desc(NES))
 
-write_delim(fgsea_hallmarktdy,"../Results/fgsea_hallmarktdy_exvivo.txt",delim = "\t")
+fgsea_hallmarktdy_toString <- fgsea_hallmarktdy %>% mutate(leadingEdge = map_chr(leadingEdge, toString))
+fgsea_hallmarktdy_toString
+
+write_delim(fgsea_hallmarktdy_toString,"../Results/fgsea_hallmarktdy_exvivo.csv", delim = "\t")
 
 a = fgsea_hallmarktdy %>% 
   arrange(padj) %>%
