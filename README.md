@@ -26,8 +26,11 @@ The directory is structured by experiment:
 All samples are epithelial cells from the mouse small intestine of young and aged mice:
 
 in vivo single-cell RNA-Seq
+
 in vivo bulk RNA-Seq
+
 ex vivo bulk RNA-Seq
+
 ex vivo ATAC-Seq
 
 Each experiment folder contains a README file which provides the information on which notebook (folder "Scripts") was used to generate the plots and graphics to the respective experiment. These can be found in the folder "Graphics". The README file also explains to which exact figure the respective graphic/plot relates. 
