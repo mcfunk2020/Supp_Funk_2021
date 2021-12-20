@@ -1,10 +1,10 @@
-# Funk et al., TBA
+# Funk et al., 2021
 
-_The manuscript this repository relates to available as preprint doi: https://doi.org/10.1101/2021.12.19.473357 ._
+_The manuscript this repository relates to available as preprint: https://doi.org/10.1101/2021.12.19.473357 ._
 
 This directory contains scripts and files supporting the publication: </br>
 
-[Funk _et al._](http://LINK_TBA), 2021, **Epithelial cells of the intestine acquire intrinsic inflammation signatures during ageing**, _Journal_TBA_
+[Funk _et al._](http://LINK_TBA), 2021, **Epithelial cells of the intestine acquire cell-intrinsic inflammation signatures during ageing**, _http://biorxiv.org/lookup/doi/10.1101/2021.12.19.473357 (2021) doi:10.1101/2021.12.19.473357_
 
 ## Abstract
 
