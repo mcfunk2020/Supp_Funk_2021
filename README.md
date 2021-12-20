@@ -1,6 +1,6 @@
 # Funk et al., TBA
 
-_The paper this repository relates to is currently under preparation._
+_The manuscript this repository relates to available as preprint doi: https://doi.org/10.1101/2021.12.19.473357 ._
 
 This directory contains scripts and files supporting the publication: </br>
 
@@ -9,7 +9,7 @@ This directory contains scripts and files supporting the publication: </br>
 ## Abstract
 
 <div style="text-align: justify; vertical-align: middle;">
-With age, tissues experience functional decline by a combination of intrinsic and extrinsic ageing factors. The epithelium of the intestine forms a dynamic interface with its microenvironment and is exposed to various signals affecting its homeostasis. However, it remains largely unknown how ageing signatures are established and maintained in cells of the intestinal epithelium. To advance our understanding of epithelium-intrinsic age effects, we compared ageing-dependent changes in transcriptional profiles of in vivo epithelial cells and ex vivo cultured intestinal organoids. At a single cell level, we show in vivo that ageing-associated inflammation is marked by upregulation of MHC class II in all cell types of the intestine, while most pronounced in enterocytes. Ex vivo intestinal organoids largely maintain the in vivo inflammaging phenotype and revealed increased chromatin accessibility in inflammation-associated loci upon ageing. In the microenvironment of the aged intestine, we found elevated levels of PD-1 and PD-L1 indicative for dysregulation of immunological homeostasis upon ageing. In summary, we identify epithelium-intrinsic inflammation in the ageing intestine that persists ex vivo. Our results provide evidence for a role of epithelial cells in propagating systemic inflammation during ageing.
+During ageing, cell-intrinsic and extrinsic factors lead to the decline of tissue function and organismal health. Disentangling these factors is important for developing effective strategies to prolong organismal healthspan. Here, we addressed this question in the mouse intestinal epithelium, which forms a dynamic interface with its microenvironment and receives extrinsic signals affecting its homeostasis and tissue ageing. We systematically compared transcriptional profiles of young and aged epithelial cells in vivo and ex vivo in cultured intestinal organoids. We found that all cell types of the aged epithelium exhibit an inflammation phenotype, which is marked by MHC class II upregulation and most pronounced in enterocytes. This was accompanied by elevated levels of the immune tolerance markers PD-1 and PD-L1 in the aged tissue microenvironment, indicating dysregulation of immunological homeostasis. Intestinal organoids from aged mice still showed an inflammation signature after weeks in culture, which was concurrent with increased chromatin accessibility of inflammation-associated loci. Our results reveal a cell-intrinsic, persistent inflammation phenotype in aged epithelial cells, which might contribute to systemic inflammation observed during ageing.
 </div>
 
 ## Contact
