@@ -1,5 +1,5 @@
 ---
-title: "Mouse RNA plots"
+title: "Additional figures"
 author: "Erica Valentini"
 date: "8/16/2021"
 output:
@@ -39,7 +39,7 @@ library(pheatmap)
 library(dendextend)
 
 de_single_cell_dt_raw <- read_delim("../../scRNA-Seq-invivo/processed_data/DE_samples_as_replicates.tsv.gz",delim = "\t", escape_double = FALSE, trim_ws = TRUE)
-fgsea_hallmarktdy_exvivo <- read_delim("../../RNA-Seq-exvivo/Results/fgsea_hallmarktdy_exvivo.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+fgsea_hallmarktdy_exvivo <- read_delim("../../RNA-Seq-exvivo/Results/fgsea_hallmarktdy_exvivo.csv", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 fgsea_hallmarktdy_invivo <- read_delim("../../RNA-Seq-invivo/results/fgsea_hallmarktdy_invivo.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 invivo_count_table <- read_delim("../../RNA-Seq-invivo/raw_data/merged_gene_counts.txt", escape_double = FALSE, trim_ws = TRUE)
 invivo_metadata <- read_delim("../../RNA-Seq-invivo/raw_data/19397_meta.tsv", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
@@ -335,26 +335,39 @@ ggsave(dotplot_mhc, filename = "../Graphics/dotplot_mhc.pdf", device = "pdf", bg
 ```
 
 
-# Correlation plot
+# Correlation plots
 
 ## Figure 4.e
 
 ```{r correlation}
 
-correlation_plot <- bulk_invivo_all_genes %>% 
+correlation_plot_padj_iv.flt <- bulk_invivo_all_genes %>% 
   full_join(bulk_organoids_all_genes, by = c("gene_name"), suffix=c(".iv", ".ev")) %>% 
-  filter(padj.iv < 0.1, padj.ev < 0.1) %>% 
+  filter(padj.iv < 0.1) %>% 
   ggscatter(x = "log2FoldChange.iv", y = "log2FoldChange.ev", add = "reg.line", conf.int = TRUE, add.params = list(color = "blue", fill="lightgray"), color = "gray10", alpha = 0.6) +
   geom_rug(side = "bi", color = "gray10") +
   stat_cor(method = "pearson") +
   coord_fixed()
 
-correlation_plot
+correlation_plot_padj_iv.flt
 
-ggsave(correlation_plot, filename = "../Graphics/correlation_plot.pdf", device = "pdf", bg = "white")
+ggsave(correlation_plot_padj_iv.flt, filename = "../Graphics/correlation_plot_padj_iv_flt.pdf", device = "pdf", bg = "white")
+
+correlation_plot_padj_ev.flt <- bulk_invivo_all_genes %>% 
+  full_join(bulk_organoids_all_genes, by = c("gene_name"), suffix=c(".iv", ".ev")) %>% 
+  filter(padj.ev < 0.1) %>% 
+  ggscatter(x = "log2FoldChange.iv", y = "log2FoldChange.ev", add = "reg.line", conf.int = TRUE, add.params = list(color = "blue", fill="lightgray"), color = "gray10", alpha = 0.6) +
+  geom_rug(side = "bi", color = "gray10") +
+  stat_cor(method = "pearson") +
+  coord_fixed()
+
+correlation_plot_padj_ev.flt
+
+ggsave(correlation_plot_padj_ev.flt, filename = "../Graphics/correlation_plot_padj_ev_flt.pdf", device = "pdf", bg = "white")
 ```
 
-# Volcano Plots
+
+# Volcano Plot
 
 ## Figure 2.e
 
@@ -378,6 +391,7 @@ volcano
 ggsave(volcano, filename = "../Graphics/volcano_sc_stem_cells.pdf", device = "pdf", bg = "white")
 
 ```
+
 
 
 # SessionInfo
