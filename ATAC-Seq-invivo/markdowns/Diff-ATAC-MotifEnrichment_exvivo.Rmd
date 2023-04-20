@@ -1,0 +1,135 @@
+---
+title: "Motif-enrichment-analysis"
+output: html_document
+date: "2022-12-13"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(monaLisa)
+library('JASPAR2022')
+library(TFBSTools)
+library(BSgenome.Mmusculus.UCSC.mm10)
+library(SummarizedExperiment)
+```
+
+Motif enrichment Analysis using Mona Lisa
+
+The pipeline was adapted from:
+
+Dania Machlab, Lukas Burger, Charlotte Soneson, Filippo M Rijli, Dirk Schübeler, Michael B Stadler, monaLisa: an R/Bioconductor package for identifying regulatory motifs, Bioinformatics, Volume 38, Issue 9, 1 May 2022, Pages 2624–2625, https://doi.org/10.1093/bioinformatics/btac102
+
+## Load data
+
+```{r}
+load(file = "../results/ATAC_exvivo_ranges.RData")
+
+ATAC_exvivo_ranges
+```
+
+# plot foldchange distribution
+
+```{r}
+
+hist(ATAC_exvivo_ranges$log2FoldChange, 100, col = "gray", main = "",
+     xlab = "log2FoldChange of ATAC peak hight (Aged - Young)", ylab = "Number of Peaks")
+
+```
+
+#set bins for enrichment analysis
+
+```{r}
+#random selection for computation time
+#switch off for real experiment
+
+#set.seed(1)
+lmrsel <- ATAC_exvivo_ranges#[ sample(x = length(ATAC_invivo_ranges), size = 10000, replace = FALSE) ]
+
+#create bins and set a foldchange limit for unimportant regions
+bins <- bin(x = ATAC_exvivo_ranges$log2FoldChange, binmode = "equalN", minAbsX = 0.2,nElements = 2000)
+table(bins)
+```
+
+# plot bins
+
+```{r}
+
+plotBinDensity(lmrsel$log2FoldChange, bins, legend = "topleft")
+
+```
+# get motifs from JASPAR
+
+```{r}
+#get TF- Motifs from DB 
+pwms <- getMatrixSet(JASPAR2022,
+            opts = list(matrixtype = "PWM",
+                       tax_group = "vertebrates",
+                        species = "10090"
+                       ))
+
+```
+
+#normalize peak widths
+
+```{r}
+#resize peaks to be of similar median length to avoid biases
+
+summary(width(lmrsel))
+
+lmrsel <- trim(resize(lmrsel, width = median(width(lmrsel)), fix = "center"))
+summary(width(lmrsel))
+
+```
+
+# get sequences and plot stats per bin
+
+```{r}
+#get sequences
+
+lmrseqs <- getSeq(BSgenome.Mmusculus.UCSC.mm10, lmrsel)
+
+#plot diagnostics
+plotBinDiagnostics(seqs = lmrseqs, bins = bins, aspect = "GCfrac")
+
+plotBinDiagnostics(seqs = lmrseqs, bins = bins, aspect = "dinucfreq")
+
+```
+#run enrichment analysis
+
+```{r}
+se <- calcBinnedMotifEnrR(seqs = lmrseqs, bins = bins, pwmL = pwms, BPPARAM = BiocParallel::MulticoreParam(6))
+
+save(se,file="TF-enrichment-analysis-ATAC-Seq-exvivo_largebin.RData")
+```
+
+# Select strongly enriched motifs and plot their profiles
+
+```{r}
+# select strongly enriched motifs
+sel <- apply(assay(se, "negLog10Padj"), 1, 
+             function(x) max(abs(x), 0, na.rm = TRUE)) > 1.0
+sum(sel)
+#> [1] 59
+seSel <- se[sel, ]
+
+# plot
+plotMotifHeatmaps(x = seSel, which.plots = c("log2enr", "negLog10Padj"), 
+                  width = 2.0, cluster = TRUE, maxEnr = 2, maxSig = 10, 
+                  show_motif_GC = TRUE)
+
+#calculate TF-Motif similarities
+
+SimMatSel <- motifSimilarity(rowData(seSel)$motif.pfm, BPPARAM = BiocParallel::MulticoreParam(4))
+range(SimMatSel)
+
+## annotate heatmap by motifs
+
+hcl <- hclust(as.dist(1 - SimMatSel), method = "average")
+plotMotifHeatmaps(x = seSel, which.plots = c("log2enr", "negLog10Padj"), 
+                  width = 1.8, cluster = hcl, maxEnr = 2, maxSig = 10,
+                  show_dendrogram = TRUE, show_seqlogo = TRUE,
+                  width.seqlogo = 1.2)
+
+```
