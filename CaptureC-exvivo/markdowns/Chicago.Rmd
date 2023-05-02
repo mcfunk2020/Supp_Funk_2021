@@ -1,0 +1,271 @@
+---
+title: "20230303_Chicago_CapC20.16_Boutros"
+author: "Angelika Feldmann"
+date: "26/03/2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+
+library(argparser)
+library(Chicago)
+library(Hmisc)
+library(MASS)
+library(Delaporte)
+require(Delaporte)
+
+```
+
+##run Chicago
+
+##1) con vs IFNg
+
+```{r}
+
+DataPath <- 'Raw_data'
+DesignDir <- 'Raw_data'
+outputDirectory <- 'Results/chicago'
+dir(DesignDir)
+dir(DataPath)
+baited_genes=read.delim(paste(DesignDir,'My.CapC16.20.baitmap',sep='/'),header=FALSE)
+hind=read.delim(paste(DesignDir,'DpnII.mm10.rmap',sep='/'),header=FALSE,stringsAsFactors=FALSE)
+ids=baited_genes[,4]
+
+##use the default weights settings, but change min fragment length
+mySettings <- defaultSettings()
+mySettings$minFragLen=100  ##change minFragLen 
+
+######################################################
+######################################################
+##Call interactions across all individual samples
+######################################################
+######################################################
+
+##define different file types:
+fls=list.files(DataPath)
+
+type=strsplit_string(fls,s2='_R1_2.hicup.bam_adapted_for_rep2_dir.chinput')
+
+##For CapC20:
+df=data.frame(
+  filename=fls,
+  type=rep(c('con','IFNg'),rep=4),
+  biolrep=rep(c('O76','O77'),each=4),
+  techrep=rep(rep(c('t1','t2'),each=2),2)
+)
+
+df$type=as.character(df$type)
+
+types=unique(df$type)
+
+for (type in types){
+    
+    print(type)
+    
+    files <- paste(DataPath, df[df$type==type,]$filename,sep='/')
+  
+    ##run Chicago
+    cd <- setExperiment(designDir = DesignDir,settings=mySettings)
+    cd <- readAndMerge(files=files, cd=cd)
+    cd <- chicagoPipeline(cd, outprefix=paste(outputDirectory,'/' ,type,sep=''))
+    exportResults(cd, file.path(outputDirectory, paste("vignetteOutput", type,sep='_')))
+    
+    save(cd,file=paste(outputDirectory, '/cd','_',type,sep=''))
+    
+    
+    #########################
+    ## standard Chicago plots
+    #########################
+
+    a <- read.table(file.path(outputDirectory, paste(paste("vignetteOutput", type,sep='_'),".ibed",sep='')), header=TRUE)
+    head(a)
+    
+   
+    ##Only use this code if >=12 baits need to be plotted:
+    baits=sort(unique(cd@x$baitID))
+    fl=floor(length(baits)/12)
+    ce=ceiling(length(baits)/12)
+
+    #plot baits
+    pdf(paste(outputDirectory, '/AllBaits_Chicago_',type,'.pdf',sep=''), pointsize=15,width=15,height=20,onefile = TRUE)
+    for (j in 1:fl){
+      plotBaits(cd, baits=baits[((j-1)*12+1) : (j*12)],plotBprof=TRUE,plotBaitNames=TRUE)
+    }
+    if (ce != fl){
+      j=ce
+      x=baits[((j-1)*12+1) : (j*12)]
+      x=x[is.na(x)==FALSE]
+      plotBaits(cd, baits=x,plotBprof=TRUE,plotBaitNames=TRUE)
+    }
+    dev.off()
+
+    for (i in 1:length(files)){
+      pdf(paste(outputDirectory, '/AllBaits_Chicago_',type,'_repNum',i,'.pdf',sep=''), pointsize=15,width=15,height=20,onefile = TRUE)
+      for (j in 1:fl){
+        plotBaits(cd, baits=baits[((j-1)*12+1) : (j*12)],Ncol=paste('N',i,sep='.'),plotBprof=TRUE,plotBaitNames=TRUE)
+      }
+      if (ce != fl){
+        j=ce
+        x=baits[((j-1)*12+1) : (j*12)]
+        x=x[is.na(x)==FALSE]
+        plotBaits(cd, baits=x,Ncol=paste('N',i,sep='.'),plotBprof=TRUE,plotBaitNames=TRUE)
+      }
+      dev.off()
+    }
+    
+    
+}
+
+
+gc()
+
+```
+
+
+
+
+##2) O76 vs O77 separately con and IFNg
+
+```{r}
+
+######################################################
+######################################################
+##Call interactions across all individual samples
+######################################################
+######################################################
+
+##define different file types:
+fls=list.files(DataPath)
+
+
+type=strsplit_string(fls,s2='_R1_2.hicup.bam_adapted_for_rep2_dir.chinput')
+
+##For CapC20:
+df=data.frame(
+  filename=fls,
+  type=rep(c('con','IFNg'),rep=4),
+  biolrep=rep(c('O76','O77'),each=4),
+  techrep=rep(rep(c('t1','t2'),each=2),2)
+)
+
+df$type=as.character(paste(df$type,df$biolrep,sep='_'))
+
+types=unique(df$type)
+
+for (type in types){
+    
+    print(type)
+    
+    files <- paste(DataPath, df[df$type==type,]$filename,sep='/')
+  
+    ##run Chicago
+    cd <- setExperiment(designDir = DesignDir,settings=mySettings)
+    cd <- readAndMerge(files=files, cd=cd)
+    cd <- chicagoPipeline(cd, outprefix=paste(outputDirectory,'/' ,type,sep=''))
+    exportResults(cd, file.path(outputDirectory, paste("vignetteOutput", type,sep='_')))
+    
+    # write.table(as.data.frame(cd@x),'cd.x.txt',sep='\t', eol='\n',quote=FALSE)
+    save(cd,file=paste(outputDirectory, '/cd','_',type,sep=''))
+    
+    
+    #########################
+    ## standard Chicago plots
+    #########################
+
+    a <- read.table(file.path(outputDirectory, paste(paste("vignetteOutput", type,sep='_'),".ibed",sep='')), header=TRUE)
+    head(a)
+   
+    ##Only use this code if >=12 baits need to be plotted:
+    baits=sort(unique(cd@x$baitID))
+    fl=floor(length(baits)/12)
+    ce=ceiling(length(baits)/12)
+
+    #plot baits
+    pdf(paste(outputDirectory, '/AllBaits_Chicago_',type,'.pdf',sep=''), pointsize=15,width=15,height=20,onefile = TRUE)
+    for (j in 1:fl){
+      plotBaits(cd, baits=baits[((j-1)*12+1) : (j*12)],plotBprof=TRUE,plotBaitNames=TRUE)
+    }
+    if (ce != fl){
+      j=ce
+      x=baits[((j-1)*12+1) : (j*12)]
+      x=x[is.na(x)==FALSE]
+      plotBaits(cd, baits=x,plotBprof=TRUE,plotBaitNames=TRUE)
+    }
+    dev.off()
+
+    for (i in 1:length(files)){
+      pdf(paste(outputDirectory, '/AllBaits_Chicago_',type,'_repNum',i,'.pdf',sep=''), pointsize=15,width=15,height=20,onefile = TRUE)
+      for (j in 1:fl){
+        plotBaits(cd, baits=baits[((j-1)*12+1) : (j*12)],Ncol=paste('N',i,sep='.'),plotBprof=TRUE,plotBaitNames=TRUE)
+      }
+      if (ce != fl){
+        j=ce
+        x=baits[((j-1)*12+1) : (j*12)]
+        x=x[is.na(x)==FALSE]
+        plotBaits(cd, baits=x,Ncol=paste('N',i,sep='.'),plotBprof=TRUE,plotBaitNames=TRUE)
+      }
+      dev.off()
+    }
+    
+    
+}
+
+
+gc()
+
+```
+
+
+
+
+##Run Chicago and make plots from single replicates:
+
+```{r}
+
+
+######################################################
+######################################################
+##Call interactions across all individual replicates
+######################################################
+######################################################
+
+df$type=paste(df$type,df$biolrep,df$techrep,sep='_')
+
+types=unique(df$type)
+
+  
+for (type in types){
+    
+    print(type)
+    
+    files <- paste(DataPath, df[df$type==type,]$filename,sep='/')
+  
+    ##run Chicago
+    cd <- setExperiment(designDir = DesignDir,settings=mySettings)
+    cd <- readAndMerge(files=files, cd=cd)
+    cd <- chicagoPipeline(cd, outprefix=paste(outputDirectory,'/' ,type,sep=''))
+    exportResults(cd, file.path(outputDirectory, paste("vignetteOutput", type,sep='_')))
+    
+    save(cd,file=paste(outputDirectory, '/cd','_',type,sep=''))
+  
+}
+
+gc()
+
+
+    
+```
+
+

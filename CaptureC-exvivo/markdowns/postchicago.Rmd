@@ -1,0 +1,597 @@
+---
+title: "20220412_CapC16_MouseStrains_postChicago"
+author: "A. Feldmann"
+date: "27 January 2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+
+source('markdowns/functions.r')
+library(devtools)
+library(argparser)
+library(Chicago)
+library(Hmisc)
+library(MASS)
+library(Delaporte)
+require(Delaporte)
+library(GenomicRanges)
+library(Hmisc)
+library(pheatmap)
+library(RColorBrewer)
+
+DesignDir <- 'Raw_data'
+
+hind=readRDS(paste(DesignDir, 'DpnII.mm10.rmap.rds',sep='/'))
+
+baited_genes=readRDS(paste(DesignDir,'baited_genes.rds',sep='/'))
+names(baited_genes)=baited_genes$genenames
+
+atac=read.csv(paste0('Raw_data/atac/annotated_differential_peaks_edgeR_exvivo.csv'))
+atacOld=atac[atac$log2FoldChange>= log2(1.3) & atac$padj<0.1,]
+atacYoung=atac[atac$log2FoldChange<= -log2(1.3) & atac$padj<0.1,]
+
+refseq=readRDS('Raw_data/Mmusculus.UCSC.mm10.RefSeq.20150821.transcripts.rds')
+refseqtss=resize(getTSSgr(refseq),1001,fix='center')
+
+grl=GRangesList(bed2gr(atac[,c('seqnames','start','end')]), bed2gr(atacOld[,c('seqnames','start','end')]), bed2gr(atacYoung[,c('seqnames','start','end')]), stripGR(refseqtss))
+  
+names(grl)=c('ATAC_all','ATAC_old','ATAC_young','RefseqTSS')
+
+oldAtacPeak=GRanges('chr16',IRanges(10471865, 10472410))
+ciitaTSS1=GRanges('chr16',IRanges(10480059,10480059))
+
+```
+
+
+##Create list with all interactions:
+
+```{r}
+
+filedir='Results/chicago'
+
+types=list.files(pattern='cd',path=filedir)
+types=strsplit_string(types,s1='cd_')
+types
+
+L=list()
+for (type in types){
+  load(paste('Results/chicago/cd',type,sep='_'))
+  L=c(L,list(cd@x))
+}
+names(L)=types
+
+ids=unique(L[[1]]$baitID)
+length(ids)==length(baited_genes)
+
+```
+
+
+##################################################
+##################################################
+##1. Some general stats
+##################################################
+##################################################
+
+```{r}
+setwd(workdir)
+
+library('BSgenome')
+library(BSgenome.Mmusculus.UCSC.mm10.masked)
+library(GenomicRanges)
+
+##create tables with interesting parameters and append to a list, then plot this list
+L_interesting_params=list()
+for(sample in names(L)){
+  print(sample)
+  L_interesting_params=c(L_interesting_params,list(getInterestingParams(sample=sample,hind=hind,baited_genes=baited_genes)))
+}
+names(L_interesting_params)=names(L)
+
+plotInterestingParams(L_interesting_params)
+
+
+```
+
+
+######################################################
+######################################################
+##Initial visualization of the data               
+######################################################
+######################################################
+
+```{r}
+
+
+pdf(paste('Lineplots_intervalsIncluded.pdf',sep=''), width=21, height=10,onefile = TRUE)
+
+for (id in ids){
+  
+  par(mfrow=c(2,3))
+  print(id)
+  name=paste(baited_genes[baited_genes$dpn_id==id,]$genenames,baited_genes[baited_genes$dpn_id==id,]$inttype,baited_genes[baited_genes$dpn_id==id,]$genetype,sep=';')
+  
+  colintervals=c('black','purple','darkgreen','orange')
+  col=rep(c('blue','lightblue','green','darkred','red','orange'))
+    
+ 
+  k=75
+  zoom=50000
+  ylim=c(0,400)
+  plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name, col=col,hind=hind,intervals=grl,colintervals = colintervals)
+  
+  k=101
+  zoom=100000
+  ylim=c(0,200)
+  plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name, col=col,hind=hind,intervals=grl,colintervals = colintervals)
+  
+  zoom=200000
+  k=155
+  ylim=c(0,100)
+  plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name, col=col,hind=hind,intervals=grl,colintervals = colintervals)
+   
+  zoom=500000
+  k=301
+  ylim=c(0,50)
+  plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name, col=col,hind=hind,intervals=grl,colintervals = colintervals)
+
+  zoom=750000
+  k=355
+  ylim=c(0,50)
+  plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name, col=col,hind=hind,intervals=grl,colintervals = colintervals)
+
+  
+  zoom=1000000
+  k=401
+  ylim=c(0,20)
+  plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name, col=col,hind=hind,intervals=grl,colintervals = colintervals)
+  
+  # ylim=c(0,5)
+  # zoom=10000000
+  # k=350
+  # plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name,intervals=grl[c(1:4,9:13)],colintervals = colintervals, col=col,hind=hind)
+  #  
+}
+dev.off()
+
+
+##Keep specific intervals for Ciita:
+
+pdf('Lineplots_Ciita_fixedIntervals_noPeaks.pdf')
+
+colintervals=c('black','purple','darkgreen','orange')
+  col=rep(c('blue','lightblue','green','darkred','red','orange'))
+   
+par(mfrow=c(3,2))
+
+for (id in baited_genes[grep('Ciita',baited_genes$genenames)]$dpn_id){
+  
+   name=paste(baited_genes[baited_genes$dpn_id==id,]$genenames,baited_genes[baited_genes$dpn_id==id,]$inttype,baited_genes[baited_genes$dpn_id==id,]$genetype,sep=';')
+
+  k=121
+  ##chr16:10387972−10587972
+  xlim=c(10387972,10587972)
+  zoom=100000
+  ylim=c(0,200)
+  plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name, col=col,hind=hind,xlim=xlim)
+  
+  ##chr16:9987972−10987972
+  xlim=c(9987972,10987972)
+  k=351
+  zoom=500000
+  ylim=c(0,50)
+  plotInteractions(L,id,k,zoom,ylim=ylim,show.legend = TRUE,name=name, col=col,hind=hind,xlim=xlim)
+  
+}
+
+dev.off()
+
+```
+
+
+##5.4.2023: Interaction with the ATAC peak of interest:
+
+```{r}
+
+con=as.data.frame(L[['con']])
+ifn=as.data.frame(L[['IFNg']])
+
+##################################################################
+##Now identify ATAC peaks within 20kb of different TSS-Dpnfrags:
+##################################################################
+
+##resize baited genes
+# b=bed2gr(baited_genes[,1:3])
+b=baited_genes
+b20=baited_genes
+# b20=bed2gr(b20[,1:3])
+b20=resize(b20,width=40000,fix='center')
+# values(b20)=baited_genes
+b20.bed=gr2bed(b20)
+names(b20.bed)=paste(names(b20.bed),'bait',sep='.')
+
+##overlap with atac peaks
+ov=as.matrix(findOverlaps(b20,grl[['ATAC_all']]))
+a=grl[['ATAC_all']][ov[,2]]
+values(a)=cbind(b20.bed[ov[,1],],values(b20[ov[,1]]))
+##exclude all ATAC peaks overlapping TSSfrags
+ov=as.matrix(findOverlaps(b,a))
+a=a[-ov[,2]]
+
+############################################
+##Now check how many reads each promoter has
+##Reads within peaks will be normalized
+##to these reads
+############################################
+
+##in control sample
+vc=vector()
+for (id in baited_genes$dpn_id){
+  vc=c(vc,sum(L[[1]][L[[1]]$baitID==id]$N))
+}
+
+##in IFNg sample
+vi=vector()
+for (id in baited_genes$dpn_id){
+  vi=c(vi,sum(L[[8]][L[[8]]$baitID==id]$N))
+}
+
+baited_genes$cov_con=vc
+baited_genes$cov_ifng=vi
+
+#######################################################################################
+##For these atac peaks find overlapping DpnII frags and two flanking frags on each side
+##and quantify 
+#######################################################################################
+
+gr=GRanges()
+for (i in 1:length(a)){
+  ov=as.matrix(findOverlaps(a[i],hind))
+  id=hind[ov[,2]]$id
+  ids=(id[1]-2):(id[length(id)]+2)
+  h=hind[ids]
+  
+  g=a[i]
+  
+  ##read counts in the control sample (norm to promoter read count and to id length):
+  g$reads_con=sum(con[con$baitID==a[i]$dpn_id & con$otherEndID %in% ids,]$N)
+  g$reads_con_normIds=g$reads_con/length(ids)
+  g$reads_con_normIds_normCov=g$reads_con_normIds/baited_genes[baited_genes$dpn_id==a[i]$dpn_id,]$cov_con
+  
+  ##read counts in the IFNg sample (norm to promoter read count and to id length):
+  g$reads_ifn=sum(ifn[ifn$baitID==a[i]$dpn_id & ifn$otherEndID %in% ids,]$N)
+  g$reads_ifn_normIds=g$reads_ifn/length(ids)
+  g$reads_ifn_normIds_normCov=g$reads_ifn_normIds/baited_genes[baited_genes$dpn_id==a[i]$dpn_id,]$cov_ifng
+  
+  ##score counts in the control sample (norm to promoter read count and to id length):
+  g$scores_con=sum(con[con$baitID==a[i]$dpn_id & con$otherEndID %in% ids,]$score)
+  g$scores_con_normIds=g$scores_con/length(ids)
+  g$scores_con_normIds_normCov=g$scores_con_normIds/baited_genes[baited_genes$dpn_id==a[i]$dpn_id,]$cov_con
+  
+  ##score counts in the IFNg sample (norm to promoter read count and to id length):
+  g$scores_ifn=sum(ifn[ifn$baitID==a[i]$dpn_id & ifn$otherEndID %in% ids,]$score)
+  g$scores_ifn_normIds=g$scores_ifn/length(ids)
+  g$scores_ifn_normIds_normCov=g$scores_ifn_normIds/baited_genes[baited_genes$dpn_id==a[i]$dpn_id,]$cov_ifng
+  
+  gr=c(gr,g)
+}
+
+##Mark old ATAC peak
+gr$oldATACPeak=FALSE
+ov=as.matrix(findOverlaps(gr,oldAtacPeak))
+gr[ov[,1]]$oldATACPeak=TRUE
+
+##Add distance center peak to bait peak:
+gr$distance_atacPeakCenter_to_baitCenter=abs((start(gr)+end(gr))/2 - (gr$start.bait+gr$end.bait)/2)
+
+saveRDS(gr,'ATAC_peaks_within_20kb_of_TSSfrags.rds')
+
+#####################################################################
+##Plots
+#####################################################################
+
+
+names(gr)=1:length(gr)
+dd=as.data.frame(gr[gr$oldATACPeak])
+d=as.data.frame(gr)
+
+##relative to the distance
+plot(gr$distance_atacPeakCenter_to_baitCenter,gr$reads_ifn_normIds_normCov,main='reads_normIDs_normCov IFN')
+points(at$distance_atacPeakCenter_to_baitCenter,at$reads_ifn_normIds_normCov,pch=20,col='red')
+text(at$distance_atacPeakCenter_to_baitCenter+1500,at$reads_ifn_normIds_normCov+0.0001,labels = at$V5,col='red')
+
+plot(gr$reads_con,gr$reads_ifn,main='reads',xlim=xlim,ylim=xlim)
+points(at$reads_con,at$reads_ifn,pch=20,col='red')
+text(at$reads_con-2,at$reads_ifn+5,labels = at$V5,col='red')
+abline(0,1,lty=5)
+
+
+library(ggplot2)
+
+p1=ggplot()+
+  theme_bw()+ theme(axis.line.x = element_line(color="black"),  axis.line.y = element_line(color="black"))+
+  theme(legend.title=element_blank(),legend.position=c(0.85,0.2),legend.key = element_blank(),axis.line=element_line(colour="black"),panel.grid.major=element_blank(),panel.grid.minor=element_blank(), panel.border=element_blank())+
+  
+  geom_point(data=d,aes(distance_atacPeakCenter_to_baitCenter , reads_con_normIds_normCov),colour="black",alpha=0.3,size=I(3))+
+  geom_point(data=dd,aes(distance_atacPeakCenter_to_baitCenter , reads_con_normIds_normCov),colour="red",alpha=1,size=I(3))+
+  
+  xlab('Distance bait to peak center [bp]')+ylab('Normalized Capture-C interaction frequency Con')+
+  ylim(c(0,0.005))+
+  
+  theme(legend.position="none",text = element_text(size=12))+
+  
+  ggtitle('Control Capture-C \n red: Ciita-interacting ATAC peak \n left-to-right: Tss1, TSS2, TSS3')
+
+
+p2=ggplot()+
+  theme_bw()+ theme(axis.line.x = element_line(color="black"),  axis.line.y = element_line(color="black"))+
+  theme(legend.title=element_blank(),legend.position=c(0.85,0.2),legend.key = element_blank(),axis.line=element_line(colour="black"),panel.grid.major=element_blank(),panel.grid.minor=element_blank(), panel.border=element_blank())+
+  
+  geom_point(data=d,aes(distance_atacPeakCenter_to_baitCenter , reads_ifn_normIds_normCov),colour="black",alpha=0.3,size=I(3))+
+  geom_point(data=dd,aes(distance_atacPeakCenter_to_baitCenter , reads_ifn_normIds_normCov),colour="red",alpha=1,size=I(3))+
+  
+  xlab('Distance bait to peak center [bp]')+ylab('Normalized Capture-C interaction frequency IFNg')+
+  ylim(c(0,0.005))+
+  
+  theme(legend.position="none",text = element_text(size=12))+
+  
+  ggtitle('IFNg Capture-C \n red: Ciita-interacting ATAC peak \n left-to-right: Tss1, TSS2, TSS3')
+
+
+pdf('ggplot_scatters_distanceVsATACpeakInteractions.pdf',width=9,height=4.5)
+multiplot(p1,p2,cols=2)
+dev.off()
+
+
+#############################################################
+##Nice scatterplot marking all Ciita_TSS1 closeby ATAC peaks:
+#############################################################
+
+names(gr)=1:length(gr)
+dd=as.data.frame(gr[gr$genenames=='Ciita_1'])
+d=as.data.frame(gr)
+
+library(ggplot2)
+
+p1=ggplot()+
+  theme_bw()+ theme(axis.line.x = element_line(color="black"),  axis.line.y = element_line(color="black"))+
+  theme(legend.title=element_blank(),legend.position=c(0.85,0.2),legend.key = element_blank(),axis.line=element_line(colour="black"),panel.grid.major=element_blank(),panel.grid.minor=element_blank(), panel.border=element_blank())+
+  
+  geom_point(data=d,aes(distance_atacPeakCenter_to_baitCenter , reads_con_normIds_normCov),colour="black",alpha=0.3,size=I(3))+
+  geom_point(data=dd,aes(distance_atacPeakCenter_to_baitCenter , reads_con_normIds_normCov),colour="green",alpha=0.5,size=I(3))+
+  
+  xlab('Distance bait to peak center [bp]')+ylab('Normalized Capture-C interaction frequency Con')+
+  ylim(c(0,0.008))+
+  
+  theme(legend.position="none",text = element_text(size=12))+
+  
+  ggtitle('Control Capture-C \n green: Ciita-TSS1 proximal ATAC peaks')
+
+
+p2=ggplot()+
+  theme_bw()+ theme(axis.line.x = element_line(color="black"),  axis.line.y = element_line(color="black"))+
+  theme(legend.title=element_blank(),legend.position=c(0.85,0.2),legend.key = element_blank(),axis.line=element_line(colour="black"),panel.grid.major=element_blank(),panel.grid.minor=element_blank(), panel.border=element_blank())+
+  
+  geom_point(data=d,aes(distance_atacPeakCenter_to_baitCenter , reads_ifn_normIds_normCov),colour="black",alpha=0.3,size=I(3))+
+  geom_point(data=dd,aes(distance_atacPeakCenter_to_baitCenter , reads_ifn_normIds_normCov),colour="green",alpha=0.5,size=I(3))+
+  
+  xlab('Distance bait to peak center [bp]')+ylab('Normalized Capture-C interaction frequency IFNg')+
+  ylim(c(0,0.005))+
+  
+  theme(legend.position="none",text = element_text(size=12))+
+  
+  ggtitle('IFNg Capture-C \n green: Ciita-TSS1 proximal ATAC peaks ')
+
+
+########################################################
+##Nice scatterplots only looking at genes with a similar
+##promoter coverage as Ciita
+########################################################
+
+gn=baited_genes[baited_genes$cov_con>= 0.8*baited_genes[baited_genes$genenames=='Ciita_1']$cov_con & baited_genes$cov_con <= 1.2*baited_genes[baited_genes$genenames=='Ciita_1']$cov_con ]$genenames
+
+names(gr)=1:length(gr)
+dd=as.data.frame(gr[gr$genenames=='Ciita_1'])
+d=as.data.frame(gr[gr$genenames %in% gn,])
+
+library(ggplot2)
+
+p3=ggplot()+
+  theme_bw()+ theme(axis.line.x = element_line(color="black"),  axis.line.y = element_line(color="black"))+
+  theme(legend.title=element_blank(),legend.position=c(0.85,0.2),legend.key = element_blank(),axis.line=element_line(colour="black"),panel.grid.major=element_blank(),panel.grid.minor=element_blank(), panel.border=element_blank())+
+  
+  geom_point(data=d,aes(distance_atacPeakCenter_to_baitCenter , reads_con_normIds_normCov),colour="black",alpha=0.3,size=I(3))+
+  geom_point(data=dd,aes(distance_atacPeakCenter_to_baitCenter , reads_con_normIds_normCov),colour="green",alpha=0.5,size=I(3))+
+  
+  xlab('Distance bait to peak center [bp]')+ylab('Normalized Capture-C interaction frequency Con')+
+  ylim(c(0,0.008))+
+  
+  theme(legend.position="none",text = element_text(size=12))+
+  
+  ggtitle('Control Capture-C genes with  promCov Ciita_1+/-20% \n green: Ciita-TSS1 proximal ATAC peaks')
+
+
+p4=ggplot()+
+  theme_bw()+ theme(axis.line.x = element_line(color="black"),  axis.line.y = element_line(color="black"))+
+  theme(legend.title=element_blank(),legend.position=c(0.85,0.2),legend.key = element_blank(),axis.line=element_line(colour="black"),panel.grid.major=element_blank(),panel.grid.minor=element_blank(), panel.border=element_blank())+
+  
+  geom_point(data=d,aes(distance_atacPeakCenter_to_baitCenter , reads_ifn_normIds_normCov),colour="black",alpha=0.3,size=I(3))+
+  geom_point(data=dd,aes(distance_atacPeakCenter_to_baitCenter , reads_ifn_normIds_normCov),colour="green",alpha=0.5,size=I(3))+
+  
+  xlab('Distance bait to peak center [bp]')+ylab('Normalized Capture-C interaction frequency IFNg')+
+  ylim(c(0,0.005))+
+  
+  theme(legend.position="none",text = element_text(size=12))+
+  
+  ggtitle('IFNg Capture-C genes with promCov Ciita_1+/-20% \n green: Ciita-TSS1 proximal ATAC peaks ')
+
+
+
+pdf('ggplot_scatters_distanceVsATACpeakInteractions_Ciita_1_ATAC_peaks_marked.pdf',width=12,height=9)
+multiplot(p1,p3,p2,p4,cols=2)
+dev.off()
+
+
+
+
+```
+
+
+##14.4.2023: Interaction with the ATAC peak of interest for individual replicates:
+
+```{r}
+
+##################################################################
+##Identify ATAC peaks within 20kb of different TSS-Dpnfrags:
+##################################################################
+
+##resize baited genes
+b=baited_genes
+b20=baited_genes
+b20=resize(b20,width=40000,fix='center')
+b20.bed=gr2bed(b20)
+names(b20.bed)=paste(names(b20.bed),'bait',sep='.')
+
+##overlap with atac peaks
+ov=as.matrix(findOverlaps(b20,grl[['ATAC_all']]))
+a=grl[['ATAC_all']][ov[,2]]
+values(a)=cbind(b20.bed[ov[,1],],values(b20[ov[,1]]))
+ov=as.matrix(findOverlaps(b,a))
+a=a[-ov[,2]]
+
+
+for (j in 1:7){
+
+  con=as.data.frame(L[[j]])
+  ifn=as.data.frame(L[[(j+7)]])
+  
+  ############################################
+  ##Now check how many reads each promoter has
+  ##Reads within peaks will be normalized
+  ##to these reads
+  ############################################
+  
+  ##in control sample
+  vc=vector()
+  for (id in baited_genes$dpn_id){
+    vc=c(vc,sum(L[[j]][L[[j]]$baitID==id]$N))
+  }
+  
+  ##in IFNg sample
+  vi=vector()
+  for (id in baited_genes$dpn_id){
+    vi=c(vi,sum(L[[(j+7)]][L[[(j+7)]]$baitID==id]$N))
+  }
+  
+  baited_genes$cov_con=vc
+  baited_genes$cov_ifng=vi
+  
+  #######################################################################################
+  ##For these atac peaks find overlapping DpnII frags and two flanking frags on each side
+  ##and quantify 
+  #######################################################################################
+  
+  gr=GRanges()
+  for (i in 1:length(a)){
+    ov=as.matrix(findOverlaps(a[i],hind))
+    id=hind[ov[,2]]$id
+    ids=(id[1]-2):(id[length(id)]+2)
+    h=hind[ids]
+    
+    g=a[i]
+    
+    ##read counts in the control sample (norm to promoter read count and to id length):
+    g$reads_con=sum(con[con$baitID==a[i]$dpn_id & con$otherEndID %in% ids,]$N)
+    g$reads_con_normIds=g$reads_con/length(ids)
+    g$reads_con_normIds_normCov=g$reads_con_normIds/baited_genes[baited_genes$dpn_id==a[i]$dpn_id,]$cov_con
+    
+    ##read counts in the IFNg sample (norm to promoter read count and to id length):
+    g$reads_ifn=sum(ifn[ifn$baitID==a[i]$dpn_id & ifn$otherEndID %in% ids,]$N)
+    g$reads_ifn_normIds=g$reads_ifn/length(ids)
+    g$reads_ifn_normIds_normCov=g$reads_ifn_normIds/baited_genes[baited_genes$dpn_id==a[i]$dpn_id,]$cov_ifng
+    
+    ##score counts in the control sample (norm to promoter read count and to id length):
+    g$scores_con=sum(con[con$baitID==a[i]$dpn_id & con$otherEndID %in% ids,]$score)
+    g$scores_con_normIds=g$scores_con/length(ids)
+    g$scores_con_normIds_normCov=g$scores_con_normIds/baited_genes[baited_genes$dpn_id==a[i]$dpn_id,]$cov_con
+    
+    ##score counts in the IFNg sample (norm to promoter read count and to id length):
+    g$scores_ifn=sum(ifn[ifn$baitID==a[i]$dpn_id & ifn$otherEndID %in% ids,]$score)
+    g$scores_ifn_normIds=g$scores_ifn/length(ids)
+    g$scores_ifn_normIds_normCov=g$scores_ifn_normIds/baited_genes[baited_genes$dpn_id==a[i]$dpn_id,]$cov_ifng
+    
+    gr=c(gr,g)
+  }
+  
+  ##Mark old ATAC peak
+  gr$oldATACPeak=FALSE
+  ov=as.matrix(findOverlaps(gr,oldAtacPeak))
+  gr[ov[,1]]$oldATACPeak=TRUE
+  
+  ##Add distance center peak to bait peak:
+  gr$distance_atacPeakCenter_to_baitCenter=abs((start(gr)+end(gr))/2 - (gr$start.bait+gr$end.bait)/2)
+  
+  saveRDS(gr,paste0('ATAC_peaks_within_20kb_of_TSSfrags.',names(L)[j],'.rds'))
+  
+  #####################################################################
+  ##Plots
+  #####################################################################
+ 
+  names(gr)=1:length(gr)
+  dd=as.data.frame(gr[gr$oldATACPeak])
+  d=as.data.frame(gr)
+  
+  ##relative to the distance
+  plot(gr$distance_atacPeakCenter_to_baitCenter,gr$reads_ifn_normIds_normCov,main='reads_normIDs_normCov IFN')
+  points(at$distance_atacPeakCenter_to_baitCenter,at$reads_ifn_normIds_normCov,pch=20,col='red')
+  text(at$distance_atacPeakCenter_to_baitCenter+1500,at$reads_ifn_normIds_normCov+0.0001,labels = at$V5,col='red')
+  
+  plot(gr$reads_con,gr$reads_ifn,main='reads',xlim=xlim,ylim=xlim)
+  points(at$reads_con,at$reads_ifn,pch=20,col='red')
+  text(at$reads_con-2,at$reads_ifn+5,labels = at$V5,col='red')
+  abline(0,1,lty=5)
+  
+  
+  library(ggplot2)
+  
+  p1=ggplot()+
+    theme_bw()+ theme(axis.line.x = element_line(color="black"),  axis.line.y = element_line(color="black"))+
+    theme(legend.title=element_blank(),legend.position=c(0.85,0.2),legend.key = element_blank(),axis.line=element_line(colour="black"),panel.grid.major=element_blank(),panel.grid.minor=element_blank(), panel.border=element_blank())+
+    
+    geom_point(data=d,aes(distance_atacPeakCenter_to_baitCenter , reads_con_normIds_normCov),colour="black",alpha=0.3,size=I(3))+
+    geom_point(data=dd,aes(distance_atacPeakCenter_to_baitCenter , reads_con_normIds_normCov),colour="red",alpha=1,size=I(3))+
+    
+    xlab('Distance bait to peak center [bp]')+ylab('Normalized Capture-C interaction frequency Con')+
+    ylim(c(0,0.009))+
+    
+    theme(legend.position="none",text = element_text(size=12))+
+    
+    ggtitle(paste(names(L)[j],'Control Capture-C \n red: Ciita-interacting ATAC peak \n left-to-right: Tss1, TSS2, TSS3'))
+  
+  
+  p2=ggplot()+
+    theme_bw()+ theme(axis.line.x = element_line(color="black"),  axis.line.y = element_line(color="black"))+
+    theme(legend.title=element_blank(),legend.position=c(0.85,0.2),legend.key = element_blank(),axis.line=element_line(colour="black"),panel.grid.major=element_blank(),panel.grid.minor=element_blank(), panel.border=element_blank())+
+    
+    geom_point(data=d,aes(distance_atacPeakCenter_to_baitCenter , reads_ifn_normIds_normCov),colour="black",alpha=0.3,size=I(3))+
+    geom_point(data=dd,aes(distance_atacPeakCenter_to_baitCenter , reads_ifn_normIds_normCov),colour="red",alpha=1,size=I(3))+
+    
+    xlab('Distance bait to peak center [bp]')+ylab('Normalized Capture-C interaction frequency IFNg')+
+    ylim(c(0,0.009))+
+    
+    theme(legend.position="none",text = element_text(size=12))+
+    
+    ggtitle(paste(names(L)[j],'IFNg Capture-C \n red: Ciita-interacting ATAC peak \n left-to-right: Tss1, TSS2, TSS3'))
+  
+  
+  pdf(paste0('ggplot_scatters_distanceVsATACpeakInteractions.',names(L)[j],'.pdf'),width=9,height=4.5)
+  multiplot(p1,p2,cols=2)
+  dev.off()
+
+}
+
+
+```
+
