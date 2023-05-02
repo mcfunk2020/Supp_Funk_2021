@@ -24,3 +24,7 @@ ${script} <my.bam> ${designDir}*.baitmap ${designDir}*.rmap <my.bam>_adapted_for
 python markdowns/makeNPerBinFile.py --binsize 20000 --designDir Raw_data --minFragLen=100
 python markdowns/makeProxOEFile.py --binsize 20000 --designDir Raw_data --minFragLen=100
 python markdowns/makeNBaitsPerBinFile.py --binsize 20000 --designDir Raw_data --minFragLen=100
+
+##Before running the script the following 2 files need to be unzipped (into the same directory):
+- Raw_data\DpnII.mm10.nbpb.zip
+- Raw_data\DpnII.mm10.rmap.zip
