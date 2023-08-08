@@ -42,6 +42,6 @@ $ tree
 18 directories, 19 files 
 
 ```
-To populate it, you might either download it from GEO (####) or download the raw resquencing data (GEO ####) and re-run cellranger.
+To populate it, you might either download it from GEO ([GSE190286](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?&acc=GSE190286)) or download the raw resquencing data  ([GSE190286](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?&acc=GSE190286)) and re-run cellranger.
 We ran cellranger version 3.0.1 with parameters `--transcriptome=mm10-1.2.0` and `--expect-cells=5000`.
 
