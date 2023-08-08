@@ -1,6 +1,6 @@
 # Funk et al., 2021
 
-_The manuscript this repository relates to available as preprint: https://doi.org/10.1101/2021.12.19.473357 ._
+_The manuscript this repository relates to is available as preprint: https://doi.org/10.1101/2021.12.19.473357 ._
 
 This directory contains scripts and files supporting the publication: </br>
 
