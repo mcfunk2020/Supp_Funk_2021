@@ -4,7 +4,7 @@ _The manuscript this repository relates to is available as preprint: https://doi
 
 This directory contains scripts and files supporting the publication: </br>
 
-[Funk _et al._](http://LINK_TBA), 2021, **Epithelial cells of the intestine acquire cell-intrinsic inflammation signatures during ageing**, _http://biorxiv.org/lookup/doi/10.1101/2021.12.19.473357 (2021) doi:10.1101/2021.12.19.473357_
+[Funk _et al._](http://LINK_TBA), 2021, **Aged intestinal stem cells propagate cell-intrinsic sources of inflammaging in mice**, _http://biorxiv.org/lookup/doi/10.1101/2021.12.19.473357 (2021) doi:10.1101/2021.12.19.473357_
 
 ## Abstract
 
